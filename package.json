@@ -1,0 +1,14 @@
+{
+  "name": "chaos-chess-game",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "混乱棋局 - 象棋×围棋×炸弹的创新混合对战游戏",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^7.2.2"
+  }
+}

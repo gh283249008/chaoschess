@@ -1,0 +1,13 @@
+{
+  "id": "chaos-chess",
+  "name": "混乱棋局",
+  "description": "象棋×围棋×扑克炸弹的创新混合对战游戏",
+  "version": "1.0.0",
+  "mode": "prod",
+  "routes": {
+    "base": "/apps/chaos-chess"
+  },
+  "createdAt": 1738665600000,
+  "updatedAt": 1738665600000,
+  "status": "active"
+}

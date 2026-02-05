@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>混乱棋局 - 象棋×围棋×炸弹</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            chaos: {
+              red: '#C8102E',
+              black: '#1a1a1a',
+              wood: '#D2691E',
+              gold: '#FFD700',
+              green: '#228B22',
+              bomb: '#FF4500'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+    }
+
+    canvas {
+      cursor: pointer;
+      touch-action: none;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .action-btn {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .action-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .action-btn:active {
+      transform: scale(0.95);
+    }
+
+    .action-btn.selected {
+      box-shadow: 0 0 0 3px #FFD700;
+      transform: scale(1.05);
+    }
+
+    @keyframes explosion {
+      0% {
+        transform: scale(0);
+        opacity: 1;
+      }
+
+      50% {
+        transform: scale(1.5);
+        opacity: 0.8;
+      }
+
+      100% {
+        transform: scale(2);
+        opacity: 0;
+      }
+    }
+
+    .explosion {
+      animation: explosion 0.6s ease-out;
+    }
+
+    @keyframes shake {
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      25% {
+        transform: translateX(-5px);
+      }
+
+      75% {
+        transform: translateX(5px);
+      }
+    }
+
+    .shake {
+      animation: shake 0.3s ease-in-out;
+    }
+
+    /* Game Modal */
+    .game-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .game-modal.show {
+      display: flex;
+    }
+
+    .modal-content-box {
+      background: white;
+      border-radius: 24px;
+      padding: 48px 40px;
+      max-width: 500px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .modal-icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+      animation: bounce 0.6s ease-out;
+    }
+
+    .modal-title {
+      font-size: 32px;
+      font-weight: bold;
+      margin-bottom: 16px;
+      color: #1a1a1a;
+    }
+
+    .modal-message {
+      font-size: 18px;
+      color: #666;
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    .modal-button {
+      background: linear-gradient(135deg, #C8102E 0%, #8B0000 100%);
+      color: white;
+      border: none;
+      padding: 16px 48px;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(200, 16, 46, 0.3);
+    }
+
+    .modal-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(200, 16, 46, 0.4);
+    }
+
+    .modal-button:active {
+      transform: translateY(0);
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(50px) scale(0.9);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes bounce {
+
+      0%,
+      100% {
+        transform: scale(1);
+      }
+
+      25% {
+        transform: scale(1.1);
+      }
+
+      50% {
+        transform: scale(0.95);
+      }
+
+      75% {
+        transform: scale(1.05);
+      }
+    }
+  </style>
+</head>
+
+<body class="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
+  <main class="container mx-auto px-4 py-6 max-w-5xl">
+    <!-- Header -->
+    <header class="text-center mb-6">
+      <h1 class="text-5xl font-bold text-chaos-red mb-2">🎭 混乱棋局 🎭</h1>
+      <p class="text-lg text-gray-700">象棋 ⚔️ 围棋 ⚫ 扑克炸弹 💣</p>
+    </header>
+
+    <!-- Game Status -->
+    <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+      <div class="flex justify-between items-center flex-wrap gap-4">
+        <div>
+          <div class="text-2xl font-bold" id="turn-status">🔴 红方回合</div>
+          <div class="text-sm text-gray-600 mt-1" id="action-hint">选择操作：移动象棋 / 下围棋 / 使用炸弹</div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="game.undo()" class="action-btn px-4 py-2 bg-gray-500 text-white rounded-lg font-semibold">
+            ↶ 悔棋
+          </button>
+          <button onclick="game.restart()"
+            class="action-btn px-4 py-2 bg-chaos-red text-white rounded-lg font-semibold">
+            🔄 重新开始
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Mode Selector -->
+    <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+      <h3 class="font-bold text-lg mb-4">选择操作模式：</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button onclick="game.setMode('chess')" id="mode-chess"
+          class="action-btn selected px-6 py-4 bg-chaos-red text-white rounded-xl font-bold text-lg">
+          ♟️ 移动象棋
+        </button>
+        <button onclick="game.setMode('go')" id="mode-go"
+          class="action-btn px-6 py-4 bg-gray-300 text-gray-700 rounded-xl font-bold text-lg">
+          ⚫ 下围棋
+        </button>
+        <button onclick="game.setMode('bomb')" id="mode-bomb"
+          class="action-btn px-6 py-4 bg-gray-300 text-gray-700 rounded-xl font-bold text-lg">
+          💣 炸弹 (<span id="bomb-count-red">2</span>/<span id="bomb-count-black">2</span>)
+        </button>
+      </div>
+    </div>
+
+    <!-- Canvas -->
+    <div class="flex justify-center mb-6">
+      <canvas id="game-canvas" class="rounded-xl bg-chaos-wood"></canvas>
+    </div>
+
+    <!-- Instructions -->
+    <div class="bg-white rounded-2xl shadow-lg p-6">
+      <h3 class="font-bold text-lg mb-3">📖 游戏规则</h3>
+      <div class="space-y-2 text-gray-700">
+        <p><strong>🎯 胜利条件：</strong>将死对方，或对方将/帅被吃掉/提掉/炸掉</p>
+        <p><strong>♟️ 象棋模式：：</strong>正常象棋规则，点击棋子选中，点击目标位置移动，<span class="text-red-600">可以吃掉围棋子</span></p>
+        <p><strong>⚫ 围棋模式：</strong>在交叉点下围棋子，<span class="text-red-600">遵循围棋提子规则（无气被提）</span>，四面包围可提掉象棋子</p>
+        <p><strong>🎲 气的定义：</strong>棋子周围的<span class="text-red-600">空位</span>就是气，同色相连的棋子共享气，没有气时被提掉</p>
+        <p><strong>🔗 连通共气：</strong>同色相邻的围棋子或象棋子<span class="text-red-600">形成连通块共享气</span>，连在一起更难被包围</p>
+        <p><strong>🔧 围棋战术：</strong>围棋子可作为<span class="text-red-600">炮架、蹩马腿、挡车</span>等，参与象棋战斗</p>
+        <p><strong>💣 炸弹模式：</strong>每方2次机会，点击中心点炸掉3×3区域内所有棋子（象棋+围棋），将/帅免疫</p>
+        <p><strong>🔄 回合机制：</strong>每回合只能选择一种操作（移动象棋 OR 下围棋 OR 使用炸弹）</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Game Modal -->
+  <div id="game-modal" class="game-modal">
+    <div class="modal-content-box">
+      <div id="modal-icon" class="modal-icon">🎉</div>
+      <div id="modal-title" class="modal-title">游戏结束</div>
+      <div id="modal-message" class="modal-message">消息内容</div>
+      <button id="modal-close-btn" class="modal-button">确定</button>
+    </div>
+  </div>
+
+  <script>
+    class ChaosChessGame {
+      constructor() {
+        this.canvas = document.getElementById('game-canvas');
+        this.ctx = this.canvas.getContext('2d');
+
+        // Board settings
+        this.gridSize = 50;
+        this.padding = 40;
+        this.boardWidth = 8;  // 象棋9条线 = 8格
+        this.boardHeight = 9; // 象棋10条线 = 9格
+
+        this.canvas.width = this.gridSize * this.boardWidth + this.padding * 2;
+        this.canvas.height = this.gridSize * this.boardHeight + this.padding * 2;
+
+        // Game state
+        this.currentPlayer = 'red'; // red or black
+        this.mode = 'chess'; // chess, go, bomb
+        this.selectedPiece = null;
+        this.history = [];
+        this.gameOver = false; // 游戏是否结束
+
+        // Bombs remaining
+        this.bombs = { red: 2, black: 2 };
+
+        // Initialize board
+        this.initBoard();
+        this.draw();
+
+        // Event listeners
+        this.canvas.addEventListener('click', (e) => this.handleClick(e));
+      }
+
+      initBoard() {
+        // Chess pieces (象棋)
+        this.chessPieces = [
+          // Red pieces (bottom)
+          { type: '车', x: 0, y: 9, player: 'red' },
+          { type: '马', x: 1, y: 9, player: 'red' },
+          { type: '相', x: 2, y: 9, player: 'red' },
+          { type: '仕', x: 3, y: 9, player: 'red' },
+          { type: '帅', x: 4, y: 9, player: 'red' },
+          { type: '仕', x: 5, y: 9, player: 'red' },
+          { type: '相', x: 6, y: 9, player: 'red' },
+          { type: '马', x: 7, y: 9, player: 'red' },
+          { type: '车', x: 8, y: 9, player: 'red' },
+          { type: '炮', x: 1, y: 7, player: 'red' },
+          { type: '炮', x: 7, y: 7, player: 'red' },
+          { type: '兵', x: 0, y: 6, player: 'red' },
+          { type: '兵', x: 2, y: 6, player: 'red' },
+          { type: '兵', x: 4, y: 6, player: 'red' },
+          { type: '兵', x: 6, y: 6, player: 'red' },
+          { type: '兵', x: 8, y: 6, player: 'red' },
+
+          // Black pieces (top)
+          { type: '车', x: 0, y: 0, player: 'black' },
+          { type: '马', x: 1, y: 0, player: 'black' },
+          { type: '象', x: 2, y: 0, player: 'black' },
+          { type: '士', x: 3, y: 0, player: 'black' },
+          { type: '将', x: 4, y: 0, player: 'black' },
+          { type: '士', x: 5, y: 0, player: 'black' },
+          { type: '象', x: 6, y: 0, player: 'black' },
+          { type: '马', x: 7, y: 0, player: 'black' },
+          { type: '车', x: 8, y: 0, player: 'black' },
+          { type: '炮', x: 1, y: 2, player: 'black' },
+          { type: '炮', x: 7, y: 2, player: 'black' },
+          { type: '卒', x: 0, y: 3, player: 'black' },
+          { type: '卒', x: 2, y: 3, player: 'black' },
+          { type: '卒', x: 4, y: 3, player: 'black' },
+          { type: '卒', x: 6, y: 3, player: 'black' },
+          { type: '卒', x: 8, y: 3, player: 'black' },
+        ];
+
+        // Go stones (围棋)
+        this.goStones = [];
+      }
+
+      setMode(mode) {
+        this.mode = mode;
+        this.selectedPiece = null;
+
+        // Update button styles
+        ['chess', 'go', 'bomb'].forEach(m => {
+          const btn = document.getElementById(`mode-${m}`);
+          if (m === mode) {
+            btn.classList.add('selected');
+            btn.classList.remove('bg-gray-300', 'text-gray-700');
+            btn.classList.add(m === 'chess' ? 'bg-chaos-red' : m === 'go' ? 'bg-chaos-black' : 'bg-chaos-bomb', 'text-white');
+          } else {
+            btn.classList.remove('selected', 'bg-chaos-red', 'bg-chaos-black', 'bg-chaos-bomb', 'text-white');
+            btn.classList.add('bg-gray-300', 'text-gray-700');
+          }
+        });
+
+        this.updateHint();
+        this.draw();
+      }
+
+      handleClick(e) {
+        // 游戏结束后禁止操作
+        if (this.gameOver) return;
+
+        const rect = this.canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        // Convert to grid coordinates
+        const gridX = Math.round((clickX - this.padding) / this.gridSize);
+        const gridY = Math.round((clickY - this.padding) / this.gridSize);
+
+        if (gridX < 0 || gridX > 8 || gridY < 0 || gridY > 9) return;
+
+        if (this.mode === 'chess') {
+          this.handleChessClick(gridX, gridY);
+        } else if (this.mode === 'go') {
+          this.handleGoClick(gridX, gridY);
+        } else if (this.mode === 'bomb') {
+          this.handleBombClick(gridX, gridY);
+        }
+      }
+
+      handleChessClick(x, y) {
+        const piece = this.getPieceAt(x, y);
+
+        if (this.selectedPiece) {
+          // Try to move
+          if (this.isValidMove(this.selectedPiece, x, y)) {
+            this.saveHistory();
+
+            // Capture enemy piece
+            const target = this.getPieceAt(x, y);
+            if (target) {
+              this.chessPieces = this.chessPieces.filter(p => p !== target);
+            }
+
+            // Capture go stone at target position (象棋可以吃掉围棋子)
+            const targetGoStone = this.getGoStoneAt(x, y);
+            if (targetGoStone) {
+              this.goStones = this.goStones.filter(s => s !== targetGoStone);
+            }
+
+            // Move piece
+            this.selectedPiece.x = x;
+            this.selectedPiece.y = y;
+            this.selectedPiece = null;
+
+            // 先检查胜负（吃子导致的）
+            if (this.checkWinCondition()) {
+              this.draw();
+              return;
+            }
+
+            // 检查是否有棋子被围棋包围提掉
+            this.checkCapturedPieces();
+
+            // 再次检查胜负（提子导致的）
+            if (this.checkWinCondition()) {
+              this.draw();
+              return;
+            }
+
+            this.nextTurn();
+          } else {
+            this.selectedPiece = null;
+          }
+        } else if (piece && piece.player === this.currentPlayer) {
+          this.selectedPiece = piece;
+        }
+
+        this.draw();
+      }
+
+      handleGoClick(x, y) {
+        // Check if position is occupied
+        if (this.getPieceAt(x, y) || this.getGoStoneAt(x, y)) {
+          return;
+        }
+
+        this.saveHistory();
+
+        // Place Go stone
+        this.goStones.push({ x, y, player: this.currentPlayer });
+
+        // Check if any enemy pieces are captured
+        this.checkCapturedPieces();
+
+        // 检查胜负（提子导致的）
+        if (this.checkWinCondition()) {
+          this.draw();
+          return;
+        }
+
+        this.nextTurn();
+        this.draw();
+      }
+
+      handleBombClick(x, y) {
+        if (this.bombs[this.currentPlayer] <= 0) {
+          this.showMessage('您的炸弹已经用完了', '💣', '炸弹已用完');
+          return;
+        }
+
+        this.saveHistory();
+
+        // Explosion effect
+        this.canvas.classList.add('shake');
+        setTimeout(() => this.canvas.classList.remove('shake'), 300);
+
+        // Remove pieces in 3x3 area
+        const toRemove = [];
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const tx = x + dx;
+            const ty = y + dy;
+
+            // Remove chess pieces (except 将/帅)
+            const piece = this.getPieceAt(tx, ty);
+            if (piece && piece.type !== '将' && piece.type !== '帅') {
+              toRemove.push(piece);
+            }
+
+            // Remove go stones
+            const stone = this.getGoStoneAt(tx, ty);
+            if (stone) {
+              toRemove.push(stone);
+            }
+          }
+        }
+
+        this.chessPieces = this.chessPieces.filter(p => !toRemove.includes(p));
+        this.goStones = this.goStones.filter(s => !toRemove.includes(s));
+
+        this.bombs[this.currentPlayer]--;
+        this.updateBombCount();
+
+        // 检查胜负（炸弹导致的）
+        if (this.checkWinCondition()) {
+          this.draw();
+          return;
+        }
+
+        this.nextTurn();
+        this.draw();
+      }
+
+      isValidMove(piece, toX, toY) {
+        // Basic validation
+        if (toX < 0 || toX > 8 || toY < 0 || toY > 9) return false;
+
+        const target = this.getPieceAt(toX, toY);
+        if (target && target.player === piece.player) return false;
+
+        const dx = toX - piece.x;
+        const dy = toY - piece.y;
+
+        // Simplified movement rules
+        switch (piece.type) {
+          case '车':
+            return (dx === 0 || dy === 0) && this.isPathClear(piece.x, piece.y, toX, toY);
+
+          case '马':
+            if (!((Math.abs(dx) === 2 && Math.abs(dy) === 1) || (Math.abs(dx) === 1 && Math.abs(dy) === 2))) {
+              return false;
+            }
+            // 检查马腿（围棋子也可以蹩马腿）
+            const legX = piece.x + (Math.abs(dx) === 2 ? Math.sign(dx) : 0);
+            const legY = piece.y + (Math.abs(dy) === 2 ? Math.sign(dy) : 0);
+            return !this.getPieceAt(legX, legY) && !this.getGoStoneAt(legX, legY);
+
+          case '炮':
+            if (dx !== 0 && dy !== 0) return false;
+            // 检查目标位置是否有棋子（象棋或围棋）
+            const hasTargetPiece = target || this.getGoStoneAt(toX, toY);
+            if (!hasTargetPiece) {
+              // 空炮移动，路径必须清空
+              return this.isPathClear(piece.x, piece.y, toX, toY);
+            } else {
+              // 打炮吃子，中间必须有恰好一个棋子作为炮架
+              return this.countPiecesBetween(piece.x, piece.y, toX, toY) === 1;
+            }
+
+          case '兵':
+          case '卒':
+            const forward = piece.player === 'red' ? -1 : 1;
+            const crossedRiver = piece.player === 'red' ? piece.y < 5 : piece.y > 4;
+            if (dy === forward && dx === 0) return true;
+            if (crossedRiver && dy === 0 && Math.abs(dx) === 1) return true;
+            return false;
+
+          case '将':
+          case '帅':
+            if (Math.abs(dx) + Math.abs(dy) !== 1) return false;
+            const inPalace = toX >= 3 && toX <= 5 &&
+              ((piece.player === 'red' && toY >= 7) ||
+                (piece.player === 'black' && toY <= 2));
+            return inPalace;
+
+          case '士':
+          case '仕':
+            if (Math.abs(dx) !== 1 || Math.abs(dy) !== 1) return false;
+            const inPalace2 = toX >= 3 && toX <= 5 &&
+              ((piece.player === 'red' && toY >= 7) ||
+                (piece.player === 'black' && toY <= 2));
+            return inPalace2;
+
+          case '象':
+          case '相':
+            if (Math.abs(dx) !== 2 || Math.abs(dy) !== 2) return false;
+            const ownSide = piece.player === 'red' ? toY >= 5 : toY <= 4;
+            const eyeX = piece.x + dx / 2;
+            const eyeY = piece.y + dy / 2;
+            return ownSide && !this.getPieceAt(eyeX, eyeY);
+
+          default:
+            return false;
+        }
+      }
+
+      checkCapturedPieces() {
+        const toRemove = [];
+
+        // 围棋规则：先提掉敌方没有气的棋子，再检查己方是否自杀
+        const currentPlayer = this.currentPlayer;
+        const enemyPlayer = currentPlayer === 'red' ? 'black' : 'red';
+
+        // 1. 先检查并提掉敌方围棋子（没有气的）
+        this.goStones.forEach(stone => {
+          if (stone.player === enemyPlayer) {
+            const liberties = this.countLiberties(stone);
+            if (liberties === 0) {
+              toRemove.push(stone);
+            }
+          }
+        });
+
+        // 2. 先检查并提掉敌方象棋子（没有气的）
+        this.chessPieces.forEach(piece => {
+          if (piece.player === enemyPlayer) {
+            const liberties = this.countChessPieceLiberties(piece);
+            if (liberties === 0) {
+              toRemove.push(piece);
+            }
+          }
+        });
+
+        // 先移除敌方棋子
+        if (toRemove.length > 0) {
+          this.goStones = this.goStones.filter(s => !toRemove.includes(s));
+          this.chessPieces = this.chessPieces.filter(p => !toRemove.includes(p));
+        }
+
+        // 3. 再检查己方围棋子是否自杀（下完子后己方没有气）
+        const friendlyToRemove = [];
+        this.goStones.forEach(stone => {
+          if (stone.player === currentPlayer) {
+            const liberties = this.countLiberties(stone);
+            if (liberties === 0) {
+              friendlyToRemove.push(stone);
+            }
+          }
+        });
+
+        // 4. 再检查己方象棋子是否被提掉
+        this.chessPieces.forEach(piece => {
+          if (piece.player === currentPlayer) {
+            const liberties = this.countChessPieceLiberties(piece);
+            if (liberties === 0) {
+              friendlyToRemove.push(piece);
+            }
+          }
+        });
+
+        // 移除己方棋子
+        if (friendlyToRemove.length > 0) {
+          this.goStones = this.goStones.filter(s => !friendlyToRemove.includes(s));
+          this.chessPieces = this.chessPieces.filter(p => !friendlyToRemove.includes(p));
+          toRemove.push(...friendlyToRemove);
+        }
+
+        // 显示提示消息
+        if (toRemove.length > 0) {
+          const removedGoStones = toRemove.filter(item => item.x !== undefined && item.y !== undefined && !item.type);
+          const removedChessPieces = toRemove.filter(item => item.type !== undefined);
+
+          const messages = [];
+          if (removedGoStones.length > 0) {
+            messages.push(`${removedGoStones.length}个围棋子被提掉`);
+          }
+          if (removedChessPieces.length > 0) {
+            const pieceNames = removedChessPieces.map(p => p.type).join('、');
+            messages.push(`${pieceNames} 被围棋包围提掉`);
+          }
+
+          if (messages.length > 0) {
+            this.showMessage(messages.join('，') + '！', '💀', '提子');
+          }
+        }
+      }
+
+      // 计算围棋子的气（自由度）
+      countLiberties(stone) {
+        const visited = new Set();
+        const group = this.getConnectedGroup(stone, visited);
+        const liberties = new Set();
+
+        // 检查整个连通块的所有气
+        group.forEach(s => {
+          const positions = [
+            { x: s.x - 1, y: s.y },
+            { x: s.x + 1, y: s.y },
+            { x: s.x, y: s.y - 1 },
+            { x: s.x, y: s.y + 1 }
+          ];
+
+          positions.forEach(pos => {
+            // 在棋盘范围内
+            if (pos.x >= 0 && pos.x <= 8 && pos.y >= 0 && pos.y <= 9) {
+              // 只有空位算气，任何棋子（围棋或象棋）都不算气
+              const goStone = this.getGoStoneAt(pos.x, pos.y);
+              const chessPiece = this.getPieceAt(pos.x, pos.y);
+
+              if (!goStone && !chessPiece) {
+                liberties.add(`${pos.x},${pos.y}`);
+              }
+            }
+          });
+        });
+
+        return liberties.size;
+      }
+      // 获取连通的围棋子组（同色相连的棋子，包括象棋子）
+      getConnectedGroup(stone, visited = new Set()) {
+        const key = `go_${stone.x},${stone.y}`;
+        if (visited.has(key)) return [];
+
+        visited.add(key);
+        const group = [stone];
+
+        const positions = [
+          { x: stone.x - 1, y: stone.y },
+          { x: stone.x + 1, y: stone.y },
+          { x: stone.x, y: stone.y - 1 },
+          { x: stone.x, y: stone.y + 1 }
+        ];
+
+        positions.forEach(pos => {
+          // 1. 检查同色围棋子
+          const adjacentStone = this.getGoStoneAt(pos.x, pos.y);
+          if (adjacentStone && adjacentStone.player === stone.player) {
+            const connectedGroup = this.getConnectedGroup(adjacentStone, visited);
+            group.push(...connectedGroup);
+          }
+
+          // 2. 检查同色象棋子 (互相递归)
+          const adjacentPiece = this.getPieceAt(pos.x, pos.y);
+          if (adjacentPiece && adjacentPiece.player === stone.player) {
+            const connectedGroup = this.getConnectedChessPieces(adjacentPiece, visited);
+            group.push(...connectedGroup);
+          }
+        });
+
+        return group;
+      }
+
+      // 计算象棋子的气（自由度）- 同色相连的象棋子共享气
+      countChessPieceLiberties(piece) {
+        const visited = new Set();
+        const group = this.getConnectedChessPieces(piece, visited);
+        const liberties = new Set();
+
+        // 检查整个连通块的所有气
+        group.forEach(p => {
+          const positions = [
+            { x: p.x - 1, y: p.y },
+            { x: p.x + 1, y: p.y },
+            { x: p.x, y: p.y - 1 },
+            { x: p.x, y: p.y + 1 }
+          ];
+
+          positions.forEach(pos => {
+            // 在棋盘范围内
+            if (pos.x >= 0 && pos.x <= 8 && pos.y >= 0 && pos.y <= 9) {
+              // 只有空位算气，任何棋子（围棋或象棋）都不算气
+              const goStone = this.getGoStoneAt(pos.x, pos.y);
+              const chessPiece = this.getPieceAt(pos.x, pos.y);
+
+              if (!goStone && !chessPiece) {
+                liberties.add(`${pos.x},${pos.y}`);
+              }
+            }
+          });
+        });
+
+        return liberties.size;
+      }
+
+      // 获取连通的象棋子组（同色相连的棋子，包括围棋子）
+      getConnectedChessPieces(piece, visited = new Set()) {
+        const key = `piece_${piece.x},${piece.y}`;
+        if (visited.has(key)) return [];
+
+        visited.add(key);
+        const group = [piece];
+
+        const positions = [
+          { x: piece.x - 1, y: piece.y },
+          { x: piece.x + 1, y: piece.y },
+          { x: piece.x, y: piece.y - 1 },
+          { x: piece.x, y: piece.y + 1 }
+        ];
+
+        positions.forEach(pos => {
+          // 1. 检查同色象棋子
+          const adjacentPiece = this.getPieceAt(pos.x, pos.y);
+          if (adjacentPiece && adjacentPiece.player === piece.player) {
+            const connectedGroup = this.getConnectedChessPieces(adjacentPiece, visited);
+            group.push(...connectedGroup);
+          }
+
+          // 2. 检查同色围棋子 (互相递归)
+          const adjacentStone = this.getGoStoneAt(pos.x, pos.y);
+          if (adjacentStone && adjacentStone.player === piece.player) {
+            const connectedGroup = this.getConnectedGroup(adjacentStone, visited);
+            group.push(...connectedGroup);
+          }
+        });
+
+        return group;
+      }
+
+      isPathClear(x1, y1, x2, y2) {
+        const dx = Math.sign(x2 - x1);
+        const dy = Math.sign(y2 - y1);
+        let x = x1 + dx;
+        let y = y1 + dy;
+
+        while (x !== x2 || y !== y2) {
+          // 围棋子和象棋子都会阻挡路径
+          if (this.getPieceAt(x, y) || this.getGoStoneAt(x, y)) return false;
+          x += dx;
+          y += dy;
+        }
+        return true;
+      }
+
+      countPiecesBetween(x1, y1, x2, y2) {
+        const dx = Math.sign(x2 - x1);
+        const dy = Math.sign(y2 - y1);
+        let x = x1 + dx;
+        let y = y1 + dy;
+        let count = 0;
+
+        while (x !== x2 || y !== y2) {
+          // 围棋子和象棋子都可作为炮架
+          if (this.getPieceAt(x, y) || this.getGoStoneAt(x, y)) count++;
+          x += dx;
+          y += dy;
+        }
+        return count;
+      }
+
+      getPieceAt(x, y) {
+        return this.chessPieces.find(p => p.x === x && p.y === y);
+      }
+
+      getGoStoneAt(x, y) {
+        return this.goStones.find(s => s.x === x && s.y === y);
+      }
+
+      nextTurn() {
+        this.currentPlayer = this.currentPlayer === 'red' ? 'black' : 'red';
+        this.mode = 'chess'; // Reset to chess mode
+        this.setMode('chess');
+        this.updateStatus();
+      }
+
+      checkWinCondition() {
+        const redGeneral = this.chessPieces.find(p => p.type === '帅');
+        const blackGeneral = this.chessPieces.find(p => p.type === '将');
+
+        if (!redGeneral) {
+          this.gameOver = true;
+          this.showMessage('红帅被消灭了！\n点击"重新开始"继续游戏', '⚫', '黑方获胜！');
+          return true;
+        } else if (!blackGeneral) {
+          this.gameOver = true;
+          this.showMessage('黑将被消灭了！\n点击"重新开始"继续游戏', '🔴', '红方获胜！');
+          return true;
+        }
+        return false;
+      }
+
+      saveHistory() {
+        this.history.push({
+          chessPieces: JSON.parse(JSON.stringify(this.chessPieces)),
+          goStones: JSON.parse(JSON.stringify(this.goStones)),
+          bombs: { ...this.bombs },
+          currentPlayer: this.currentPlayer
+        });
+      }
+
+      undo() {
+        if (this.history.length === 0) {
+          this.showMessage('没有可以悔棋的步骤', '⚠️', '无法悔棋');
+          return;
+        }
+
+        const state = this.history.pop();
+        this.chessPieces = state.chessPieces;
+        this.goStones = state.goStones;
+        this.bombs = state.bombs;
+        this.currentPlayer = state.currentPlayer;
+        this.selectedPiece = null;
+
+        this.updateBombCount();
+        this.updateStatus();
+        this.draw();
+      }
+
+      restart() {
+        this.history = [];
+        this.currentPlayer = 'red';
+        this.mode = 'chess';
+        this.selectedPiece = null;
+        this.bombs = { red: 2, black: 2 };
+        this.gameOver = false; // 重置游戏状态
+        this.initBoard();
+        this.setMode('chess');
+        this.updateBombCount();
+        this.updateStatus();
+        this.draw();
+      }
+
+      updateStatus() {
+        const emoji = this.currentPlayer === 'red' ? '🔴' : '⚫';
+        const name = this.currentPlayer === 'red' ? '红方' : '黑方';
+        document.getElementById('turn-status').textContent = `${emoji} ${name}回合`;
+      }
+
+      updateHint() {
+        const hints = {
+          chess: '点击己方棋子选中，再点击目标位置移动（可吃掉围棋子）',
+          go: '点击交叉点下围棋，四面包围可提掉象棋子，可作炮架/蹩马腿/挡车',
+          bomb: '点击中心点，炸掉3×3区域内所有棋子（将/帅免疫）'
+        };
+        document.getElementById('action-hint').textContent = hints[this.mode];
+      }
+
+      updateBombCount() {
+        document.getElementById('bomb-count-red').textContent = this.bombs.red;
+        document.getElementById('bomb-count-black').textContent = this.bombs.black;
+      }
+
+      showMessage(msg, icon = '🎉', title = '提示') {
+        const modal = document.getElementById('game-modal');
+        const modalIcon = document.getElementById('modal-icon');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+
+        modalIcon.textContent = icon;
+        modalTitle.textContent = title;
+        modalMessage.textContent = msg;
+        modal.classList.add('show');
+      }
+
+      draw() {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw board
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+
+        // Vertical lines
+        for (let i = 0; i <= 8; i++) {
+          const x = this.padding + i * this.gridSize;
+          ctx.beginPath();
+          ctx.moveTo(x, this.padding);
+          ctx.lineTo(x, this.padding + this.boardHeight * this.gridSize);
+          ctx.stroke();
+        }
+
+        // Horizontal lines
+        for (let i = 0; i <= 9; i++) {
+          const y = this.padding + i * this.gridSize;
+          ctx.beginPath();
+          ctx.moveTo(this.padding, y);
+          ctx.lineTo(this.padding + this.boardWidth * this.gridSize, y);
+          ctx.stroke();
+        }
+
+        // River
+        ctx.fillStyle = '#666';
+        ctx.font = '14px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('楚河', this.padding + this.gridSize * 2, this.padding + this.gridSize * 4.5 + 5);
+        ctx.fillText('汉界', this.padding + this.gridSize * 6, this.padding + this.gridSize * 4.5 + 5);
+
+        // Draw Go stones
+        this.goStones.forEach(stone => {
+          const x = this.padding + stone.x * this.gridSize;
+          const y = this.padding + stone.y * this.gridSize;
+
+          ctx.beginPath();
+          ctx.arc(x, y, 12, 0, Math.PI * 2);
+
+          if (stone.player === 'red') {
+            // 红方围棋：白色带红边
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.strokeStyle = '#C8102E';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          } else {
+            // 黑方围棋：黑色
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fill();
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        });
+
+        // Draw chess pieces
+        this.chessPieces.forEach(piece => {
+          const x = this.padding + piece.x * this.gridSize;
+          const y = this.padding + piece.y * this.gridSize;
+
+          // Check if surrounded (in danger) by enemy go stones
+          const positions = [
+            { x: piece.x - 1, y: piece.y },
+            { x: piece.x + 1, y: piece.y },
+            { x: piece.x, y: piece.y - 1 },
+            { x: piece.x, y: piece.y + 1 }
+          ];
+          let enemySurroundCount = 0;
+          positions.forEach(pos => {
+            const stone = this.getGoStoneAt(pos.x, pos.y);
+            // 只计算敌方围棋子
+            if (stone && stone.player !== piece.player) {
+              enemySurroundCount++;
+            }
+          });
+          const isSurrounded = enemySurroundCount >= 4;
+          const isInDanger = enemySurroundCount === 3;
+
+          // Circle background
+          ctx.beginPath();
+          ctx.arc(x, y, 20, 0, Math.PI * 2);
+          ctx.fillStyle = piece.player === 'red' ? '#FFE4E1' : '#F0F0F0';
+          ctx.fill();
+          ctx.strokeStyle = piece.player === 'red' ? '#C8102E' : '#1a1a1a';
+          ctx.lineWidth = isSurrounded ? 4 : 2;
+          ctx.stroke();
+
+          // Text
+          ctx.fillStyle = piece.player === 'red' ? '#C8102E' : '#1a1a1a';
+          ctx.font = 'bold 18px serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(piece.type, x, y);
+
+          // Danger indicator (3 sides surrounded)
+          if (isInDanger) {
+            ctx.fillStyle = 'rgba(255, 165, 0, 0.3)';
+            ctx.beginPath();
+            ctx.arc(x, y, 20, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Surrounded indicator (about to be captured)
+          if (isSurrounded) {
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+            ctx.beginPath();
+            ctx.arc(x, y, 20, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Selected highlight
+          if (this.selectedPiece === piece) {
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(x, y, 25, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        });
+
+        // Draw bomb preview in bomb mode
+        if (this.mode === 'bomb') {
+          ctx.globalAlpha = 0.3;
+          ctx.fillStyle = '#FF4500';
+          // Will show on hover in real implementation
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+
+    // Initialize game
+    let game;
+    window.addEventListener('DOMContentLoaded', () => {
+      game = new ChaosChessGame();
+
+      // Modal close handlers
+      const modal = document.getElementById('game-modal');
+      const modalCloseBtn = document.getElementById('modal-close-btn');
+
+      modalCloseBtn.addEventListener('click', () => {
+        modal.classList.remove('show');
+      });
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.classList.remove('show');
+        }
+      });
+    });
+  </script>
+</body>
+
+</html>

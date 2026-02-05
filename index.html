@@ -280,6 +280,18 @@
     </div>
   </main>
 
+  <!-- Kill Feed Container -->
+  <div id="kill-feed" class="fixed top-4 right-4 flex flex-col gap-2 pointer-events-none z-50"></div>
+
+  <!-- Check Alert -->
+  <div id="check-alert" class="fixed top-1/3 left-1/2 transform -translate-x-1/2 hidden z-[100] pointer-events-none">
+    <div
+      class="bg-red-600 text-white px-10 py-4 rounded-full shadow-2xl text-5xl font-bold border-4 border-yellow-400 tracking-widest animate-alert-shake"
+      style="background-color: rgba(220, 38, 38, 0.9);">
+      ⚠️ 将 军！
+    </div>
+  </div>
+
   <!-- Game Modal -->
   <div id="game-modal" class="game-modal">
     <div class="modal-content-box">
@@ -289,6 +301,84 @@
       <button id="modal-close-btn" class="modal-button">确定</button>
     </div>
   </div>
+
+  <style>
+    /* Kill Feed Animations */
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+      }
+
+      to {
+        opacity: 0;
+      }
+    }
+
+    .kill-feed-item {
+      animation: slideInRight 0.3s ease-out forwards;
+    }
+
+    .kill-feed-item.fading {
+      animation: fadeOut 0.5s ease-in forwards;
+    }
+
+    @keyframes alert-shake {
+
+      0%,
+      100% {
+        transform: translateX(-50%);
+      }
+
+      10%,
+      30%,
+      50%,
+      70%,
+      90% {
+        transform: translateX(calc(-50% - 10px));
+      }
+
+      20%,
+      40%,
+      60%,
+      80% {
+        transform: translateX(calc(-50% + 10px));
+      }
+    }
+
+    .animate-alert-shake {
+      animation: alert-shake 0.5s cubic-bezier(.36, .07, .19, .97) both;
+    }
+
+    /* Custom scrollbar for rules */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #CBD5E0;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #A0AEC0;
+    }
+  </style>
 
   <script>
     class ChaosChessGame {
@@ -422,12 +512,20 @@
             // Capture enemy piece
             const target = this.getPieceAt(x, y);
             if (target) {
+              const killerIcon = this.selectedPiece.player === 'red' ? '🔴' : '⚫';
+              const victimIcon = target.player === 'red' ? '🔴' : '⚫';
+              this.showKillFeed(`${killerIcon} ${this.selectedPiece.type}`, `${victimIcon} ${target.type}`, 'eat');
+
               this.chessPieces = this.chessPieces.filter(p => p !== target);
             }
 
             // Capture go stone at target position (象棋可以吃掉围棋子)
             const targetGoStone = this.getGoStoneAt(x, y);
             if (targetGoStone) {
+              const killerIcon = this.selectedPiece.player === 'red' ? '🔴' : '⚫';
+              const victimIcon = targetGoStone.player === 'red' ? '🔴' : '⚫';
+              this.showKillFeed(`${killerIcon} ${this.selectedPiece.type}`, `${victimIcon} 围棋`, 'eat');
+
               this.goStones = this.goStones.filter(s => s !== targetGoStone);
             }
 
@@ -460,6 +558,93 @@
         }
 
         this.draw();
+      }
+
+      nextTurn() {
+        this.currentPlayer = this.currentPlayer === 'red' ? 'black' : 'red';
+        this.updateStatus();
+        this.updateHint();
+        this.updateBombCount();
+
+        // 检查将军状态
+        this.checkForCheck();
+      }
+
+      checkForCheck() {
+        const checkAlert = document.getElementById('check-alert');
+        if (this.isCheck(this.currentPlayer)) {
+          checkAlert.classList.remove('hidden');
+
+          // 重置动画
+          const innerDiv = checkAlert.firstElementChild;
+          innerDiv.style.animation = 'none';
+          innerDiv.offsetHeight; /* trigger reflow */
+          innerDiv.style.animation = '';
+
+          // 2秒后自动消失
+          if (this.checkTimeout) clearTimeout(this.checkTimeout);
+          this.checkTimeout = setTimeout(() => {
+            checkAlert.classList.add('hidden');
+          }, 2000);
+        } else {
+          checkAlert.classList.add('hidden');
+        }
+      }
+
+      // 检查某方是否被将军
+      isCheck(player) {
+        const general = this.findGeneral(player);
+        if (!general) return false;
+
+        // 1. 检查围棋威胁（将/帅所在连通块只剩一口气）
+        const liberties = this.countChessPieceLiberties(general);
+        if (liberties === 1) {
+          console.log(`[Check] ${player} general low on liberties!`);
+          return true;
+        }
+
+        // 2. 检查象棋威胁
+        const enemyPlayer = player === 'red' ? 'black' : 'red';
+        // 遍历所有敌方棋子
+        return this.chessPieces.some(piece => {
+          if (piece.player === enemyPlayer) {
+            const canAttack = this.isValidMove(piece, general.x, general.y);
+            if (canAttack) {
+              console.log(`[Check] ${piece.type} at (${piece.x},${piece.y}) checks General at (${general.x},${general.y})`);
+            }
+            return canAttack;
+          }
+          return false;
+        });
+      }
+
+      findGeneral(player) {
+        return this.chessPieces.find(p => p.player === player && (p.type === '将' || p.type === '帅'));
+      }
+
+      // 显示击杀提示 (CS:GO 风格)
+      showKillFeed(killerName, victimName, type = 'eat') {
+        const feedContainer = document.getElementById('kill-feed');
+        const item = document.createElement('div');
+        item.className = 'kill-feed-item flex items-center bg-black/60 border border-gray-500 text-white px-3 py-1 rounded text-sm font-bold shadow-md';
+
+        const killerColor = killerName.includes('🔴') || killerName.includes('红') ? 'text-red-400' : 'text-gray-300';
+        const victimColor = victimName.includes('🔴') || victimName.includes('红') ? 'text-red-400' : 'text-gray-300';
+        const icon = type === 'capture' ? '☠️' : '⚔️';
+
+        item.innerHTML = `
+          <span class="${killerColor}">${killerName}</span>
+          <span class="mx-2 text-yellow-400 text-lg">${icon}</span>
+          <span class="${victimColor}">${victimName}</span>
+        `;
+
+        feedContainer.appendChild(item);
+
+        // 自动移除
+        setTimeout(() => {
+          item.classList.add('fading');
+          item.addEventListener('animationend', () => item.remove());
+        }, 3000);
       }
 
       handleGoClick(x, y) {
@@ -535,11 +720,13 @@
         this.draw();
       }
 
-      isValidMove(piece, toX, toY) {
+      isValidMove(piece, toX, toY, debug = false) {
         // Basic validation
         if (toX < 0 || toX > 8 || toY < 0 || toY > 9) return false;
 
         const target = this.getPieceAt(toX, toY);
+        // Important: When checking for check, target IS the general (enemy), so this shouldn't return false.
+        // But preventing friendly fire is correct.
         if (target && target.player === piece.player) return false;
 
         const dx = toX - piece.x;
@@ -547,8 +734,12 @@
 
         // Simplified movement rules
         switch (piece.type) {
-          case '车':
-            return (dx === 0 || dy === 0) && this.isPathClear(piece.x, piece.y, toX, toY);
+          case '车': {
+            const isStraight = (dx === 0 || dy === 0);
+            const clear = this.isPathClear(piece.x, piece.y, toX, toY);
+            if (debug && isStraight && !clear) console.log(`[CheckDebug] Rook path blocked from (${piece.x},${piece.y}) to (${toX},${toY})`);
+            return isStraight && clear;
+          }
 
           case '马':
             if (!((Math.abs(dx) === 2 && Math.abs(dy) === 1) || (Math.abs(dx) === 1 && Math.abs(dy) === 2))) {
@@ -557,9 +748,11 @@
             // 检查马腿（围棋子也可以蹩马腿）
             const legX = piece.x + (Math.abs(dx) === 2 ? Math.sign(dx) : 0);
             const legY = piece.y + (Math.abs(dy) === 2 ? Math.sign(dy) : 0);
-            return !this.getPieceAt(legX, legY) && !this.getGoStoneAt(legX, legY);
+            const legObstructed = this.getPieceAt(legX, legY) || this.getGoStoneAt(legX, legY);
+            if (debug && legObstructed) console.log(`[CheckDebug] Knight blocked at leg (${legX},${legY})`);
+            return !legObstructed;
 
-          case '炮':
+          case '炮': {
             if (dx !== 0 && dy !== 0) return false;
             // 检查目标位置是否有棋子（象棋或围棋）
             const hasTargetPiece = target || this.getGoStoneAt(toX, toY);
@@ -568,8 +761,11 @@
               return this.isPathClear(piece.x, piece.y, toX, toY);
             } else {
               // 打炮吃子，中间必须有恰好一个棋子作为炮架
-              return this.countPiecesBetween(piece.x, piece.y, toX, toY) === 1;
+              const screenCount = this.countPiecesBetween(piece.x, piece.y, toX, toY);
+              if (debug && screenCount !== 1) console.log(`[CheckDebug] Cannon needs 1 screen, found ${screenCount}`);
+              return screenCount === 1;
             }
+          }
 
           case '兵':
           case '卒':
@@ -669,25 +865,27 @@
           toRemove.push(...friendlyToRemove);
         }
 
-        // 显示提示消息
+        // 显示击杀提示
         if (toRemove.length > 0) {
           const removedGoStones = toRemove.filter(item => item.x !== undefined && item.y !== undefined && !item.type);
           const removedChessPieces = toRemove.filter(item => item.type !== undefined);
 
-          const messages = [];
+          // 聚合显示：围棋提子
           if (removedGoStones.length > 0) {
-            messages.push(`${removedGoStones.length}个围棋子被提掉`);
-          }
-          if (removedChessPieces.length > 0) {
-            const pieceNames = removedChessPieces.map(p => p.type).join('、');
-            messages.push(`${pieceNames} 被围棋包围提掉`);
+            const victim = removedGoStones[0].player === 'red' ? '🔴' : '⚫';
+            const killer = this.currentPlayer === 'red' ? '🔴 围棋' : '⚫ 围棋';
+            this.showKillFeed(killer, `${victim} 围棋 (x${removedGoStones.length})`, 'capture');
           }
 
-          if (messages.length > 0) {
-            this.showMessage(messages.join('，') + '！', '💀', '提子');
-          }
+          // 聚合显示：象棋被提
+          removedChessPieces.forEach(piece => {
+            const victimIcon = piece.player === 'red' ? '🔴' : '⚫';
+            const killer = this.currentPlayer === 'red' ? '🔴 围棋' : '⚫ 围棋';
+            this.showKillFeed(killer, `${victimIcon} ${piece.type}`, 'capture');
+          });
         }
       }
+
 
       // 计算围棋子的气（自由度）
       countLiberties(stone) {
@@ -859,12 +1057,7 @@
         return this.goStones.find(s => s.x === x && s.y === y);
       }
 
-      nextTurn() {
-        this.currentPlayer = this.currentPlayer === 'red' ? 'black' : 'red';
-        this.mode = 'chess'; // Reset to chess mode
-        this.setMode('chess');
-        this.updateStatus();
-      }
+
 
       checkWinCondition() {
         const redGeneral = this.chessPieces.find(p => p.type === '帅');
@@ -920,6 +1113,7 @@
         this.setMode('chess');
         this.updateBombCount();
         this.updateStatus();
+        this.checkForCheck(); // Ensure check status is updated on restart
         this.draw();
       }
 

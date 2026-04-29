@@ -45,6 +45,10 @@ export class Board {
         }) || null;
     }
 
+    getGoStoneAt(x, y) {
+        return this.getPieceAt(x, y, 'Go');
+    }
+
     /**
      * 获取所有指定插件的棋子
      * @param {string} pluginSource - 插件名称
@@ -113,5 +117,7 @@ export class Board {
         this.width = state.width;
         this.height = state.height;
         this.pieces = JSON.parse(JSON.stringify(state.pieces));
+        this.riverBlocked = Boolean(state.riverBlocked);
+        this.smokeEffects = JSON.parse(JSON.stringify(state.smokeEffects || []));
     }
 }

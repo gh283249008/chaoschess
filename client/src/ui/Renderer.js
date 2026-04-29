@@ -39,6 +39,27 @@ export class Renderer {
     }
 
     /**
+     * 渲染当前本地游戏流程使用的棋盘状态。
+     */
+    renderLocalGame({ board, gameMode, selectedPiece, currentPlayer, effectManager }) {
+        this.clear();
+        this.drawGrid();
+        this.drawRiverLabels();
+        this.drawRiverBlock(board.riverBlocked);
+
+        board.pieces.forEach(piece => {
+            const { x, y } = this.gridToScreen(piece.x, piece.y);
+            const hidden = this.isHiddenBySmoke(piece, board.smokeEffects, currentPlayer);
+
+            if (!hidden) {
+                this.drawPiece(piece, x, y, gameMode, selectedPiece, effectManager);
+            }
+        });
+
+        this.drawLocalSmokeEffects(board.smokeEffects, currentPlayer);
+    }
+
+    /**
      * 绘制棋盘网格
      */
     drawGrid() {
@@ -75,6 +96,32 @@ export class Renderer {
         this.ctx.textAlign = 'center';
         this.ctx.fillText('楚河', padding + gridSize * 2, padding + gridSize * 4.5 + 5);
         this.ctx.fillText('汉界', padding + gridSize * 6, padding + gridSize * 4.5 + 5);
+    }
+
+    drawRiverBlock(blocked) {
+        if (!blocked) return;
+
+        const { padding, gridSize } = this.config;
+        const riverY = padding + 4 * gridSize;
+        const riverHeight = gridSize;
+        const boardWidth = 8 * gridSize;
+
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(100, 149, 237, 0.5)';
+        this.ctx.fillRect(padding, riverY, boardWidth, riverHeight);
+        this.ctx.strokeStyle = '#fff';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([10, 10]);
+        this.ctx.beginPath();
+        this.ctx.moveTo(padding, riverY + riverHeight / 2);
+        this.ctx.lineTo(padding + boardWidth, riverY + riverHeight / 2);
+        this.ctx.stroke();
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = 'bold 24px Arial';
+        this.ctx.shadowColor = 'black';
+        this.ctx.shadowBlur = 4;
+        this.ctx.fillText('河道封锁', padding + boardWidth / 2, riverY + riverHeight / 2 + 8);
+        this.ctx.restore();
     }
 
     /**
@@ -133,6 +180,78 @@ export class Renderer {
                 this.ctx.arc(x, y, 25, 0, Math.PI * 2);
                 this.ctx.stroke();
             }
+        });
+    }
+
+    drawPiece(piece, x, y, gameMode, selectedPiece, effectManager) {
+        if (piece.pluginSource === 'Obstacle') {
+            this.drawObstacle(x, y);
+            return;
+        }
+
+        this.pluginManager.renderPiece(this.ctx, piece, x, y, this.config.gridSize);
+
+        if (gameMode === 'move' && selectedPiece === piece) {
+            this.ctx.strokeStyle = '#FFD700';
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, 25, 0, Math.PI * 2);
+            this.ctx.stroke();
+        }
+
+        effectManager?.renderEffects(this.ctx, piece, x, y);
+    }
+
+    drawObstacle(x, y) {
+        this.ctx.save();
+        this.ctx.fillStyle = '#8B4513';
+        this.ctx.strokeStyle = '#3d1f0f';
+        this.ctx.lineWidth = 2;
+        this.ctx.fillRect(x - 18, y - 18, 36, 36);
+        this.ctx.strokeRect(x - 18, y - 18, 36, 36);
+        this.ctx.restore();
+    }
+
+    isHiddenBySmoke(piece, smokeEffects = [], currentPlayer) {
+        return smokeEffects.some(smoke => {
+            const inSmoke = Math.abs(piece.x - smoke.x) <= 1 && Math.abs(piece.y - smoke.y) <= 1;
+            return inSmoke && currentPlayer !== smoke.player;
+        });
+    }
+
+    drawLocalSmokeEffects(smokeEffects = [], currentPlayer) {
+        smokeEffects.forEach(smoke => {
+            const { x, y } = this.gridToScreen(smoke.x, smoke.y);
+            const radius = 75;
+
+            this.ctx.save();
+
+            if (currentPlayer === smoke.player) {
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+                this.ctx.fillStyle = 'rgba(128, 128, 128, 0.2)';
+                this.ctx.fill();
+                this.ctx.strokeStyle = 'rgba(128, 128, 128, 0.5)';
+                this.ctx.lineWidth = 2;
+                this.ctx.setLineDash([5, 5]);
+                this.ctx.stroke();
+            } else {
+                const gradient = this.ctx.createRadialGradient(x, y, 10, x, y, radius);
+                gradient.addColorStop(0, 'rgba(60, 60, 60, 0.95)');
+                gradient.addColorStop(0.7, 'rgba(80, 80, 80, 0.85)');
+                gradient.addColorStop(1, 'rgba(100, 100, 100, 0)');
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, radius + 10, 0, Math.PI * 2);
+                this.ctx.fillStyle = gradient;
+                this.ctx.fill();
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                this.ctx.font = 'bold 50px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText('?', x, y);
+            }
+
+            this.ctx.restore();
         });
     }
 

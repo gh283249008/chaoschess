@@ -1,0 +1,230 @@
+{
+    "name": "ChineseChess",
+    "version": "1.0.0",
+    "author": "Chaos Chess Team",
+    "description": "中国象棋插件 - 包含车马炮相仕将兵的完整规则",
+    "apiVersion": "1.0.0",
+    "pieceTypes": [
+        {
+            "type": "车",
+            "name": "Rook",
+            "player": "both"
+        },
+        {
+            "type": "马",
+            "name": "Knight",
+            "player": "both"
+        },
+        {
+            "type": "炮",
+            "name": "Cannon",
+            "player": "both"
+        },
+        {
+            "type": "相",
+            "name": "Elephant",
+            "player": "red"
+        },
+        {
+            "type": "象",
+            "name": "Elephant",
+            "player": "black"
+        },
+        {
+            "type": "仕",
+            "name": "Advisor",
+            "player": "red"
+        },
+        {
+            "type": "士",
+            "name": "Advisor",
+            "player": "black"
+        },
+        {
+            "type": "帅",
+            "name": "General",
+            "player": "red"
+        },
+        {
+            "type": "将",
+            "name": "General",
+            "player": "black"
+        },
+        {
+            "type": "兵",
+            "name": "Pawn",
+            "player": "red"
+        },
+        {
+            "type": "卒",
+            "name": "Pawn",
+            "player": "black"
+        }
+    ],
+    "initialSetup": {
+        "red": [
+            {
+                "type": "车",
+                "x": 0,
+                "y": 9
+            },
+            {
+                "type": "马",
+                "x": 1,
+                "y": 9
+            },
+            {
+                "type": "相",
+                "x": 2,
+                "y": 9
+            },
+            {
+                "type": "仕",
+                "x": 3,
+                "y": 9
+            },
+            {
+                "type": "帅",
+                "x": 4,
+                "y": 9
+            },
+            {
+                "type": "仕",
+                "x": 5,
+                "y": 9
+            },
+            {
+                "type": "相",
+                "x": 6,
+                "y": 9
+            },
+            {
+                "type": "马",
+                "x": 7,
+                "y": 9
+            },
+            {
+                "type": "车",
+                "x": 8,
+                "y": 9
+            },
+            {
+                "type": "炮",
+                "x": 1,
+                "y": 7
+            },
+            {
+                "type": "炮",
+                "x": 7,
+                "y": 7
+            },
+            {
+                "type": "兵",
+                "x": 0,
+                "y": 6
+            },
+            {
+                "type": "兵",
+                "x": 2,
+                "y": 6
+            },
+            {
+                "type": "兵",
+                "x": 4,
+                "y": 6
+            },
+            {
+                "type": "兵",
+                "x": 6,
+                "y": 6
+            },
+            {
+                "type": "兵",
+                "x": 8,
+                "y": 6
+            }
+        ],
+        "black": [
+            {
+                "type": "车",
+                "x": 0,
+                "y": 0
+            },
+            {
+                "type": "马",
+                "x": 1,
+                "y": 0
+            },
+            {
+                "type": "象",
+                "x": 2,
+                "y": 0
+            },
+            {
+                "type": "士",
+                "x": 3,
+                "y": 0
+            },
+            {
+                "type": "将",
+                "x": 4,
+                "y": 0
+            },
+            {
+                "type": "士",
+                "x": 5,
+                "y": 0
+            },
+            {
+                "type": "象",
+                "x": 6,
+                "y": 0
+            },
+            {
+                "type": "马",
+                "x": 7,
+                "y": 0
+            },
+            {
+                "type": "车",
+                "x": 8,
+                "y": 0
+            },
+            {
+                "type": "炮",
+                "x": 1,
+                "y": 2
+            },
+            {
+                "type": "炮",
+                "x": 7,
+                "y": 2
+            },
+            {
+                "type": "卒",
+                "x": 0,
+                "y": 3
+            },
+            {
+                "type": "卒",
+                "x": 2,
+                "y": 3
+            },
+            {
+                "type": "卒",
+                "x": 4,
+                "y": 3
+            },
+            {
+                "type": "卒",
+                "x": 6,
+                "y": 3
+            },
+            {
+                "type": "卒",
+                "x": 8,
+                "y": 3
+            }
+        ]
+    }
+}

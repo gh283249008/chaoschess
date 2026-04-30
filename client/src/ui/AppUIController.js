@@ -12,12 +12,40 @@ const SHOP_ITEMS = [
     { id: 'special_repair', category: 'special', name: '紧急修复', desc: '即将开放', price: 300, disabled: true }
 ];
 
+const ONLINE_ERROR_TEXT = {
+    INVALID_JSON: '消息格式错误，请稍后重试',
+    UNKNOWN_MESSAGE_TYPE: '收到未知联机消息，请刷新重试',
+    ROOM_NOT_FOUND: '房间不存在或已失效',
+    NOT_IN_ROOM: '你当前不在房间内',
+    NOT_HOST: '仅房主可以执行该操作',
+    INVALID_ACTION: '当前操作无效，请检查阶段或参数',
+    INVALID_PHASE: '当前阶段不支持该操作',
+    NOT_YOUR_TURN: '当前不是你的行动回合',
+    RECONNECT_FAILED: '重连失败，请稍后重试',
+    SESSION_EXPIRED: '会话已过期，请重新加入房间',
+    ROOM_EXPIRED: '房间已过期，请重新加入或创建'
+};
+
+const ONLINE_PHASE_TEXT = {
+    connected: '联机已连接',
+    reconnecting: '重连中...',
+    recovered: '已恢复房间',
+    expired: '会话过期，请重新加入'
+};
+
 export class AppUIController {
     constructor(app) {
         this.app = app;
         this.modeBtn = null;
         this.currentView = 'lobby';
         this.countdownTicker = null;
+    }
+
+    resolveOnlineErrorMessage(code, fallbackMessage) {
+        if (code && ONLINE_ERROR_TEXT[code]) {
+            return ONLINE_ERROR_TEXT[code];
+        }
+        return fallbackMessage || '网络错误';
     }
 
     initControls() {
@@ -273,6 +301,7 @@ export class AppUIController {
 
     renderLobbyHtml(state) {
         const rooms = state.rooms || [];
+        const phaseText = ONLINE_PHASE_TEXT[state.connectionPhase] || (state.connected ? '联机已连接' : '联机未连接');
         const roomRows = rooms.length === 0
             ? '<div style="color:#6b7280; font-size:13px;">暂无可加入房间</div>'
             : rooms.map(r => `
@@ -285,7 +314,7 @@ export class AppUIController {
         return `
             <div style="border:1px solid #d1d5db; border-radius:10px; padding:14px; background:#ffffff;">
                 <div style="font-size:18px; font-weight:700; color:#111827;">大厅</div>
-                <div style="font-size:12px; color:${state.connected ? '#166534' : '#991b1b'}; margin-top:4px;">${state.connected ? '联机已连接' : '联机未连接'}</div>
+                <div style="font-size:12px; color:${state.connectionPhase === 'reconnecting' ? '#b45309' : (state.connected ? '#166534' : '#991b1b')}; margin-top:4px;">${phaseText}</div>
                 <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
                     <button id="online-create-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#0f766e; color:#fff; cursor:pointer;">创建房间</button>
                     <input id="online-room-input" placeholder="输入房间号" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:6px;" />
@@ -306,7 +335,9 @@ export class AppUIController {
         }
         const playerRows = (snapshot.players || []).map(p => {
             const ready = !!snapshot.readyByPlayer?.[p.id];
-            return `<div style="font-size:13px; color:#1f2937; margin-top:4px;">${p.color === 'red' ? '红方' : '黑方'} - ${p.token} - ${ready ? '已准备' : '未准备'}</div>`;
+            const onlineText = p.online ? '在线' : '离线重连中';
+            const onlineColor = p.online ? '#166534' : '#b45309';
+            return `<div style="font-size:13px; color:#1f2937; margin-top:4px;">${p.color === 'red' ? '红方' : '黑方'} - ${p.token} - ${ready ? '已准备' : '未准备'} - <span style="color:${onlineColor};">${onlineText}</span></div>`;
         }).join('');
 
         return `

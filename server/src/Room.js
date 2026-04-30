@@ -1,9 +1,12 @@
 const PLAYER_COLORS = ['red', 'black'];
+const PROTOCOL_VERSION = '1';
 
 export class Room {
     constructor(id, hostPlayer) {
         this.id = id;
         this.createdAt = Date.now();
+        this.lastActiveAt = Date.now();
+        this.finishedAt = null;
         this.status = 'waiting';
         this.seq = 0;
         this.lastAction = null;
@@ -49,7 +52,9 @@ export class Room {
             id: player.id,
             name: player.name,
             token: player.token,
-            color
+            color,
+            online: true,
+            disconnectedAt: null
         };
         this.players.push(entry);
         this.readyByPlayer[player.id] = false;
@@ -73,10 +78,12 @@ export class Room {
 
         if (this.players.length === 0) {
             this.status = 'finished';
+            this.finishedAt = Date.now();
         } else {
             this.status = 'waiting';
-            this.players = this.players.map((p, index) => ({ ...p, color: PLAYER_COLORS[index] }));
+            this.players = this.players.map((p, index) => ({ ...p, color: PLAYER_COLORS[index], online: true, disconnectedAt: null }));
             this.readyByPlayer = Object.fromEntries(this.players.map(p => [p.id, false]));
+            this.lastActiveAt = Date.now();
         }
 
         return { success: true };
@@ -87,6 +94,7 @@ export class Room {
             return { success: false, reason: '玩家不在房间中' };
         }
         this.readyByPlayer[playerId] = !!ready;
+        this.lastActiveAt = Date.now();
         return { success: true };
     }
 
@@ -109,6 +117,8 @@ export class Room {
 
         const targetWins = mode === 'BO5' ? 3 : 2;
         this.status = 'playing';
+        this.lastActiveAt = Date.now();
+        this.finishedAt = null;
         this.matchState = {
             mode,
             score: { red: 0, black: 0 },
@@ -167,27 +177,18 @@ export class Room {
                 break;
         }
 
-        if (result.success) {
+        if (result.success && result.changed !== false) {
             this.lastAction = action;
             this.lastActionBy = playerId;
             this.lastActionSeq += 1;
+            this.lastActiveAt = Date.now();
         }
 
         return result;
     }
 
     applyCanvasClick(player, action) {
-        if (this.roundState.status !== 'playing') {
-            return { success: false, reason: '当前不在对局时间' };
-        }
-        if (!action || typeof action.x !== 'number' || typeof action.y !== 'number') {
-            return { success: false, reason: '无效点击坐标' };
-        }
-        if (player.color !== this.roundState.turnColor) {
-            return { success: false, reason: '当前不是你的行动方' };
-        }
-        this.roundState.turnColor = this.roundState.turnColor === 'red' ? 'black' : 'red';
-        return { success: true };
+        return { success: true, changed: false, reason: 'CANVAS_CLICK 已废弃，请使用 SYNC_STATE' };
     }
 
     applySyncState(player, action) {
@@ -201,7 +202,7 @@ export class Room {
             return { success: false, reason: '缺少同步状态数据' };
         }
 
-        this.sharedState = {
+        const nextSharedState = {
             boardState: action.boardState,
             currentPlayer: action.state.currentPlayer,
             gameMode: action.state.gameMode,
@@ -209,13 +210,21 @@ export class Room {
             extraTurns: action.state.extraTurns || 0
         };
 
+        const prevSerialized = JSON.stringify(this.sharedState || {});
+        const nextSerialized = JSON.stringify(nextSharedState);
+        const prevTurn = this.roundState.turnColor;
+
+        this.sharedState = nextSharedState;
+
         const nextTurn = action.state.currentPlayer;
         if (nextTurn === 'red' || nextTurn === 'black') {
             this.roundState.turnColor = nextTurn;
         } else {
             this.roundState.turnColor = this.roundState.turnColor === 'red' ? 'black' : 'red';
         }
-        return { success: true };
+
+        const changed = prevSerialized !== nextSerialized || prevTurn !== this.roundState.turnColor;
+        return { success: true, changed };
     }
 
     applyPurchase(player, action) {
@@ -244,7 +253,7 @@ export class Room {
 
         economy.credits -= price;
         loadout.purchasedEffects.push(effectId);
-        return { success: true };
+        return { success: true, changed: true };
     }
 
     applyBeginRound(player) {
@@ -255,7 +264,7 @@ export class Room {
         this.roundState.status = 'playing';
         this.roundState.currentBuyer = null;
         this.roundState.buyEndsAt = null;
-        return { success: true };
+        return { success: true, changed: true };
     }
 
     applyNextRound(player) {
@@ -277,8 +286,9 @@ export class Room {
             red: { purchasedEffects: [] },
             black: { purchasedEffects: [] }
         };
+        this.lastActiveAt = Date.now();
 
-        return { success: true };
+        return { success: true, changed: true };
     }
 
     markRoundEnded(winnerColor, reason) {
@@ -291,7 +301,45 @@ export class Room {
         if (this.matchState.score[winnerColor] >= this.matchState.targetWins) {
             this.matchState.winner = winnerColor;
             this.status = 'match_end';
+            this.finishedAt = Date.now();
         }
+        this.lastActiveAt = Date.now();
+    }
+
+    markPlayerOffline(playerId) {
+        const player = this.players.find(p => p.id === playerId);
+        if (!player) {
+            return { success: false, reason: '玩家不存在' };
+        }
+
+        player.online = false;
+        player.disconnectedAt = Date.now();
+        this.lastActiveAt = Date.now();
+        return { success: true };
+    }
+
+    restorePlayerByToken(playerToken, nextClientId) {
+        const player = this.players.find(p => p.token === playerToken);
+        if (!player) {
+            return { success: false, reason: '未找到玩家席位' };
+        }
+
+        const prevClientId = player.id;
+        if (prevClientId !== nextClientId) {
+            const prevReady = !!this.readyByPlayer[prevClientId];
+            delete this.readyByPlayer[prevClientId];
+            this.readyByPlayer[nextClientId] = prevReady;
+        }
+
+        player.id = nextClientId;
+        player.online = true;
+        player.disconnectedAt = null;
+        this.lastActiveAt = Date.now();
+        return { success: true, color: player.color, prevClientId };
+    }
+
+    hasOnlinePlayers() {
+        return this.players.some(p => p.online);
     }
 
     nextSeq() {
@@ -301,18 +349,21 @@ export class Room {
 
     getSnapshot() {
         return {
+            protocolVersion: PROTOCOL_VERSION,
             roomId: this.id,
             seq: this.seq,
             status: this.status,
             players: this.players,
             readyByPlayer: this.readyByPlayer,
             matchState: this.matchState,
-            roundState: this.roundState
-            ,
+            roundState: this.roundState,
+            sharedState: this.sharedState,
             lastAction: this.lastAction,
             lastActionBy: this.lastActionBy,
             lastActionSeq: this.lastActionSeq,
-            sharedState: this.sharedState
+            createdAt: this.createdAt,
+            lastActiveAt: this.lastActiveAt,
+            finishedAt: this.finishedAt
         };
     }
 

@@ -14,6 +14,15 @@ export class NetworkClient {
         this.messageHandlers = new Map();
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
+        this.actionSeq = 0;
+        this.playerToken = null;
+        this.shouldReconnect = true;
+        this.backoffBaseMs = 1000;
+        this.backoffMaxMs = 8000;
+        this.session = {
+            roomId: null,
+            playerToken: null
+        };
     }
 
     /**
@@ -28,6 +37,8 @@ export class NetworkClient {
                     console.log('Connected to game server');
                     this.connected = true;
                     this.reconnectAttempts = 0;
+                    const handlers = this.messageHandlers.get('socket_open') || [];
+                    handlers.forEach(handler => handler());
                     resolve();
                 };
 
@@ -38,7 +49,9 @@ export class NetworkClient {
                 this.ws.onclose = () => {
                     console.log('Disconnected from game server');
                     this.connected = false;
-                    this.handleDisconnect();
+                    if (this.shouldReconnect) {
+                        this.handleDisconnect();
+                    }
                 };
 
                 this.ws.onerror = (error) => {
@@ -63,16 +76,27 @@ export class NetworkClient {
             // 处理特殊消息类型
             switch (message.type) {
                 case 'connected':
-                    this.clientId = message.clientId;
+                    this.clientId = message.payload?.clientId || null;
+                    this.playerToken = message.payload?.playerToken || this.playerToken;
+                    this.session.playerToken = this.playerToken;
                     break;
 
                 case 'room_created':
                 case 'room_joined':
-                    this.roomId = message.roomId;
+                    this.roomId = message.payload?.roomId || null;
+                    this.session.roomId = this.roomId;
+                    break;
+
+                case 'reconnected':
+                    this.roomId = message.payload?.roomId || this.roomId;
+                    this.session.roomId = this.roomId;
+                    this.playerToken = message.payload?.playerToken || this.playerToken;
+                    this.session.playerToken = this.playerToken;
                     break;
 
                 case 'room_left':
                     this.roomId = null;
+                    this.session.roomId = null;
                     break;
             }
 
@@ -99,17 +123,24 @@ export class NetworkClient {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+            const handlers = this.messageHandlers.get('reconnecting') || [];
+            handlers.forEach(handler => handler(this.reconnectAttempts));
 
             setTimeout(() => {
                 this.connect().catch(err => {
                     console.error('Reconnection failed:', err);
                 });
-            }, 2000 * this.reconnectAttempts);
+            }, this.getReconnectDelay(this.reconnectAttempts));
         } else {
             console.error('Max reconnection attempts reached');
             const handlers = this.messageHandlers.get('connection_lost') || [];
             handlers.forEach(handler => handler());
         }
+    }
+
+    getReconnectDelay(attempt) {
+        const delay = this.backoffBaseMs * Math.pow(2, Math.max(0, attempt - 1));
+        return Math.min(delay, this.backoffMaxMs);
     }
 
     /**
@@ -178,7 +209,13 @@ export class NetworkClient {
      * 发送游戏操作
      */
     sendGameAction(action) {
-        return this.send(Protocol.playerAction(action));
+        const clientActionId = this.nextActionId();
+        return this.send(Protocol.playerAction(action, clientActionId, Date.now()));
+    }
+
+    nextActionId() {
+        this.actionSeq += 1;
+        return `${Date.now()}-${this.actionSeq}`;
     }
 
     /**
@@ -200,14 +237,27 @@ export class NetworkClient {
         return this.send(Protocol.requestSnapshot());
     }
 
+    reconnectToSession() {
+        if (!this.session.roomId || !this.session.playerToken) {
+            return false;
+        }
+        return this.send(Protocol.reconnect(this.session.roomId, this.session.playerToken));
+    }
+
     /**
      * 断开连接
      */
     disconnect() {
+        this.shouldReconnect = false;
         if (this.ws) {
             this.ws.close();
             this.ws = null;
             this.connected = false;
         }
+    }
+
+    clearSession() {
+        this.session.roomId = null;
+        this.session.playerToken = this.playerToken;
     }
 }

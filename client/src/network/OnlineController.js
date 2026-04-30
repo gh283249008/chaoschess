@@ -1,4 +1,5 @@
 import { NetworkClient } from './Client.js';
+import { ErrorCodes, Protocol, ProtocolVersion } from './Protocol.js';
 
 export class OnlineController {
     constructor(app) {
@@ -11,9 +12,11 @@ export class OnlineController {
             roomId: null,
             color: null,
             roomSnapshot: null,
-            rooms: []
+            rooms: [],
+            connectionPhase: 'connected'
         };
         this.lastAppliedActionSeq = 0;
+        this.lastAppliedRoomSeq = 0;
     }
 
     async connect(serverUrl) {
@@ -25,6 +28,7 @@ export class OnlineController {
         this.bindHandlers();
         await this.client.connect();
         this.onlineState.connected = true;
+        this.onlineState.connectionPhase = 'connected';
         this.client.listRooms();
         this.refreshUI();
     }
@@ -33,12 +37,31 @@ export class OnlineController {
         this.client.on('connected', msg => {
             this.onlineState.clientId = msg.payload?.clientId || msg.clientId;
             this.onlineState.clientToken = msg.payload?.playerToken || null;
+            this.onlineState.connected = true;
+            this.refreshUI();
+        });
+
+        this.client.on('socket_open', () => {
+            if (this.onlineState.roomId && this.onlineState.clientToken) {
+                this.onlineState.connectionPhase = 'reconnecting';
+                const ok = this.client.reconnectToSession();
+                if (!ok) {
+                    this.onlineState.connectionPhase = 'connected';
+                }
+            }
+            this.refreshUI();
+        });
+
+        this.client.on('reconnecting', () => {
+            this.onlineState.connected = false;
+            this.onlineState.connectionPhase = 'reconnecting';
             this.refreshUI();
         });
 
         this.client.on('room_created', msg => {
             this.onlineState.roomId = msg.payload?.roomId || msg.roomId;
             this.onlineState.color = msg.payload?.color || null;
+            this.onlineState.connectionPhase = 'connected';
             this.client.requestSnapshot();
             this.refreshUI();
         });
@@ -46,7 +69,18 @@ export class OnlineController {
         this.client.on('room_joined', msg => {
             this.onlineState.roomId = msg.payload?.roomId || msg.roomId;
             this.onlineState.color = msg.payload?.color || null;
+            this.onlineState.connectionPhase = 'connected';
             this.client.requestSnapshot();
+            this.refreshUI();
+        });
+
+        this.client.on('reconnected', msg => {
+            this.onlineState.roomId = msg.payload?.roomId || this.onlineState.roomId;
+            this.onlineState.color = msg.payload?.color || this.onlineState.color;
+            this.onlineState.connectionPhase = 'recovered';
+            this.onlineState.connected = true;
+            this.client.requestSnapshot();
+            this.app.showNotification('已恢复房间会话', 'success');
             this.refreshUI();
         });
 
@@ -54,6 +88,9 @@ export class OnlineController {
             this.onlineState.roomId = null;
             this.onlineState.color = null;
             this.onlineState.roomSnapshot = null;
+            this.onlineState.connectionPhase = 'connected';
+            this.lastAppliedRoomSeq = 0;
+            this.client.clearSession();
             this.client.listRooms();
             this.refreshUI();
         });
@@ -64,35 +101,76 @@ export class OnlineController {
         });
 
         this.client.on('state_sync', msg => {
-            this.onlineState.roomSnapshot = msg.payload || null;
-            const turnColor = msg.payload?.roundState?.turnColor;
+            const parsed = Protocol.parseStateSync(msg);
+            if (parsed.protocolVersion !== ProtocolVersion) {
+                this.app.showNotification('联机协议版本不一致，可能存在同步问题', 'warning');
+            }
+
+            const nextSeq = parsed.snapshot?.seq || 0;
+            if (nextSeq <= this.lastAppliedRoomSeq) {
+                return;
+            }
+
+            const prevSnapshot = this.onlineState.roomSnapshot;
+            this.lastAppliedRoomSeq = nextSeq;
+            this.onlineState.roomSnapshot = parsed.snapshot || null;
+            const turnColor = parsed.snapshot?.roundState?.turnColor;
             if (turnColor === 'red' || turnColor === 'black') {
                 this.app.currentPlayer = turnColor;
             }
 
-            const sharedState = msg.payload?.sharedState;
+            const sharedState = parsed.snapshot?.sharedState;
             if (sharedState) {
                 this.app.applyRemoteSharedState(sharedState);
             }
 
-            const actionSeq = msg.payload?.lastActionSeq || 0;
-            const action = msg.payload?.lastAction;
+            const actionSeq = parsed.snapshot?.lastActionSeq || 0;
+            const action = parsed.snapshot?.lastAction;
             if (action && actionSeq > this.lastAppliedActionSeq) {
                 this.lastAppliedActionSeq = actionSeq;
                 if (action.kind === 'CANVAS_CLICK' && !sharedState) {
                     this.app.applyRemoteCanvasClick(action);
                 }
             }
+
+            const prevPhase = prevSnapshot?.roundState?.status || null;
+            const nextPhase = parsed.snapshot?.roundState?.status || null;
+            if (prevPhase && nextPhase && prevPhase !== nextPhase) {
+                const text = nextPhase === 'buying' ? '进入购物阶段' : (nextPhase === 'playing' ? '进入对局阶段' : '当前局已结束');
+                this.app.showNotification(text, 'info');
+            }
+
+            const prevTurn = prevSnapshot?.roundState?.turnColor || null;
+            const nextTurn = parsed.snapshot?.roundState?.turnColor || null;
+            if (prevTurn && nextTurn && prevTurn !== nextTurn) {
+                this.app.showNotification(`轮到${nextTurn === 'red' ? '红方' : '黑方'}行动`, 'info');
+            }
+
+            if (this.onlineState.connectionPhase === 'recovered') {
+                this.onlineState.connectionPhase = 'connected';
+            }
             this.refreshUI();
         });
 
         this.client.on('error', msg => {
-            const message = msg.payload?.message || msg.message || '网络错误';
+            const parsed = Protocol.parseError(msg);
+            if (parsed.code === ErrorCodes.SESSION_EXPIRED || parsed.code === ErrorCodes.ROOM_EXPIRED) {
+                this.onlineState.connectionPhase = 'expired';
+                this.onlineState.roomId = null;
+                this.onlineState.color = null;
+                this.onlineState.roomSnapshot = null;
+                this.lastAppliedRoomSeq = 0;
+                this.client.clearSession();
+                this.client.listRooms();
+            }
+            const message = this.app.ui?.resolveOnlineErrorMessage(parsed.code, parsed.message) || parsed.message;
             this.app.showNotification(message, 'warning');
+            this.refreshUI();
         });
 
         this.client.on('connection_lost', () => {
             this.onlineState.connected = false;
+            this.onlineState.connectionPhase = 'reconnecting';
             this.refreshUI();
         });
     }

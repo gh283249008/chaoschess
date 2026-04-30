@@ -7,12 +7,12 @@ export class GoController {
         const occupied = this.app.board.getPieceAt(gridX, gridY);
         if (occupied) {
             console.log(`Position (${gridX}, ${gridY}) is occupied`);
-            return;
+            return false;
         }
 
         if (this.isBlockedByEnemySmoke(gridX, gridY)) {
             console.log('Cannot place in opponent smoke (silently blocked)');
-            return;
+            return false;
         }
 
         console.log(`Placing ${this.app.currentPlayer} stone at (${gridX}, ${gridY})`);
@@ -31,6 +31,7 @@ export class GoController {
             this.app.board.removePiece(piece);
 
             if (captured.includes(piece)) {
+                this.app.onPieceCaptured(piece, this.app.currentPlayer);
                 const killerName = `${this.app.currentPlayer === 'red' ? '🔴' : '⚫'}围棋`;
                 const victimName = `${piece.player === 'red' ? '🔴' : '⚫'}${piece.type}`;
                 this.app.showKillFeed(killerName, victimName, 'capture');
@@ -46,6 +47,7 @@ export class GoController {
 
         this.app.switchPlayer();
         this.app.render();
+        return true;
     }
 
     isBlockedByEnemySmoke(gridX, gridY) {

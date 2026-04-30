@@ -15,6 +15,11 @@ export class Renderer {
             boardWidth: 9,
             boardHeight: 10
         };
+        this.perspective = 'red';
+    }
+
+    setPerspective(playerColor = 'red') {
+        this.perspective = playerColor === 'black' ? 'black' : 'red';
     }
 
     /**
@@ -128,12 +133,9 @@ export class Renderer {
      * 绘制墙壁
      */
     drawWalls(walls) {
-        const { padding, gridSize } = this.config;
-
         this.ctx.fillStyle = '#8B4513';
         walls.forEach(wall => {
-            const x = padding + wall.x * gridSize;
-            const y = padding + wall.y * gridSize;
+            const { x, y } = this.gridToScreen(wall.x, wall.y);
             this.ctx.fillRect(x - 15, y - 15, 30, 30);
         });
     }
@@ -142,11 +144,10 @@ export class Renderer {
      * 绘制烟雾区域
      */
     drawSmokeZones(smokeZones) {
-        const { padding, gridSize } = this.config;
+        const { gridSize } = this.config;
 
         smokeZones.forEach(zone => {
-            const x = padding + zone.x * gridSize;
-            const y = padding + zone.y * gridSize;
+            const { x, y } = this.gridToScreen(zone.x, zone.y);
             const width = zone.w * gridSize;
             const height = zone.h * gridSize;
 
@@ -163,11 +164,10 @@ export class Renderer {
      * 绘制棋子
      */
     drawPieces(pieces, selectedPiece) {
-        const { padding, gridSize } = this.config;
+        const { gridSize } = this.config;
 
         pieces.forEach(piece => {
-            const x = padding + piece.x * gridSize;
-            const y = padding + piece.y * gridSize;
+            const { x, y } = this.gridToScreen(piece.x, piece.y);
 
             // 委托给插件渲染
             this.pluginManager.renderPiece(this.ctx, piece, x, y, gridSize);
@@ -259,12 +259,9 @@ export class Renderer {
      * 绘制冻结指示器
      */
     drawFrozenIndicators(frozenPieces) {
-        const { padding, gridSize } = this.config;
-
         frozenPieces.forEach(frozen => {
             const piece = frozen.piece;
-            const x = padding + piece.x * gridSize;
-            const y = padding + piece.y * gridSize;
+            const { x, y } = this.gridToScreen(piece.x, piece.y);
 
             // 绘制冰冻效果
             this.ctx.strokeStyle = '#00BFFF';
@@ -287,9 +284,10 @@ export class Renderer {
      * 将屏幕坐标转换为棋盘坐标
      */
     screenToGrid(screenX, screenY) {
-        const { padding, gridSize } = this.config;
+        const { padding, gridSize, boardHeight } = this.config;
         const gridX = Math.round((screenX - padding) / gridSize);
-        const gridY = Math.round((screenY - padding) / gridSize);
+        const rawGridY = Math.round((screenY - padding) / gridSize);
+        const gridY = this.perspective === 'black' ? (boardHeight - 1 - rawGridY) : rawGridY;
         return { x: gridX, y: gridY };
     }
 
@@ -297,10 +295,11 @@ export class Renderer {
      * 将棋盘坐标转换为屏幕坐标
      */
     gridToScreen(gridX, gridY) {
-        const { padding, gridSize } = this.config;
+        const { padding, gridSize, boardHeight } = this.config;
+        const mappedY = this.perspective === 'black' ? (boardHeight - 1 - gridY) : gridY;
         return {
             x: padding + gridX * gridSize,
-            y: padding + gridY * gridSize
+            y: padding + mappedY * gridSize
         };
     }
 }

@@ -1,3 +1,5 @@
+import { Protocol } from './Protocol.js';
+
 /**
  * WebSocket客户端
  * 处理与服务器的网络通信
@@ -155,35 +157,47 @@ export class NetworkClient {
      * 创建房间
      */
     createRoom() {
-        return this.send({ type: 'create_room' });
+        return this.send(Protocol.createRoom());
     }
 
     /**
      * 加入房间
      */
     joinRoom(roomId) {
-        return this.send({ type: 'join_room', roomId });
+        return this.send(Protocol.joinRoom(roomId));
     }
 
     /**
      * 离开房间
      */
     leaveRoom() {
-        return this.send({ type: 'leave_room' });
+        return this.send(Protocol.leaveRoom());
     }
 
     /**
      * 发送游戏操作
      */
     sendGameAction(action) {
-        return this.send({ type: 'game_action', action });
+        return this.send(Protocol.playerAction(action));
     }
 
     /**
      * 请求房间列表
      */
     listRooms() {
-        return this.send({ type: 'list_rooms' });
+        return this.send(Protocol.listRooms());
+    }
+
+    setReady(ready) {
+        return this.send(Protocol.ready(ready));
+    }
+
+    startMatch(mode = 'BO3') {
+        return this.send(Protocol.startMatch(mode));
+    }
+
+    requestSnapshot() {
+        return this.send(Protocol.requestSnapshot());
     }
 
     /**

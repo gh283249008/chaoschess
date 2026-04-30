@@ -14,6 +14,8 @@ import { TurnController } from './game/TurnController.js';
 import { GoController } from './game/GoController.js';
 import { ChessController } from './game/ChessController.js';
 import { InputController } from './game/InputController.js';
+import { MatchController } from './game/MatchController.js';
+import { OnlineController } from './network/OnlineController.js';
 
 /**
  * 主应用入口
@@ -34,6 +36,8 @@ class ChaosChessApp {
         this.goController = new GoController(this);
         this.chessController = new ChessController(this);
         this.inputController = new InputController(this);
+        this.matchController = new MatchController(this);
+        this.onlineController = new OnlineController(this);
 
         // Game state
         this.currentPlayer = 'red';
@@ -52,6 +56,7 @@ class ChaosChessApp {
         this.selectedCards = [];
         this.waitingForTarget = null;
         this.extraTurns = 0;
+        this.applyingRemoteAction = false;
 
         this.init();
     }
@@ -74,21 +79,14 @@ class ChaosChessApp {
             this.pokerPlugin = new PokerPlugin();
             this.pluginManager.registerCardPlugin('Poker', this.pokerPlugin);
 
-            // 初始化扑克牌（每人7张）
-            this.pokerHands.red = this.pokerPlugin.dealHand(7);
-            this.pokerHands.black = this.pokerPlugin.dealHand(7);
-
-            // 加载初始棋盘（象棋）
-            const initialPieces = chineseChess.getInitialSetup();
-            initialPieces.forEach(piece => this.board.addPiece(piece));
-
-            console.log(`✓ Loaded ${initialPieces.length} pieces`);
+            this.matchController.initMatch('BO3');
+            console.log('✓ Match initialized in BO3 mode');
         } catch (error) {
             console.error('Failed to load plugins:', error);
         }
 
         // 更新状态
-        this.updateStatus('插件系统已初始化 - 中国象棋已加载');
+        this.updateStatus('插件系统已初始化 - 已进入 BO3 比赛');
 
         // 显示已加载的插件
         this.displayPlugins();
@@ -101,7 +99,21 @@ class ChaosChessApp {
         // 添加模式切换按钮
         this.addModeToggle();
 
+        this.connectOnline();
+
         console.log('✓ Application initialized');
+    }
+
+    async connectOnline() {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsUrl = `${protocol}://${window.location.host}/ws`;
+        try {
+            await this.onlineController.connect(wsUrl);
+            this.showNotification('联机服务已连接', 'success');
+        } catch (error) {
+            console.error('Failed to connect online server:', error);
+            this.showNotification('联机服务连接失败，请确认 server 已启动', 'warning');
+        }
     }
 
     addModeToggle() {
@@ -128,7 +140,7 @@ class ChaosChessApp {
     }
 
     handleGoClick(gridX, gridY) {
-        this.goController.handleGoClick(gridX, gridY);
+        return this.goController.handleGoClick(gridX, gridY);
     }
 
     // 切换玩家并处理状态效果
@@ -137,7 +149,7 @@ class ChaosChessApp {
     }
 
     handleChessClick(gridX, gridY) {
-        this.chessController.handleChessClick(gridX, gridY);
+        return this.chessController.handleChessClick(gridX, gridY);
     }
 
     handlePromotion(type) {
@@ -161,8 +173,136 @@ class ChaosChessApp {
         this.pokerController.playPokerHand();
     }
 
+    purchaseSelectedHandEffect() {
+        return this.pokerController.purchaseSelectedHandEffect();
+    }
+
     executeTargetEffect(x, y) {
         return this.pokerController.executeTargetEffect(x, y);
+    }
+
+    purchaseEffect(effectId) {
+        if (this.onlineController.getState().roomSnapshot && this.onlineController.getState().roomSnapshot.status !== 'waiting') {
+            this.onlineController.sendPlayerAction({ kind: 'PURCHASE_EFFECT', effectId });
+            return { success: true, message: '购买请求已发送到服务器' };
+        }
+        return this.matchController.purchaseEffect(effectId);
+    }
+
+    startNextRound() {
+        if (this.onlineController.getState().roomSnapshot) {
+            this.onlineController.sendPlayerAction({ kind: 'NEXT_ROUND' });
+            return;
+        }
+        this.matchController.startNextRound();
+    }
+
+    beginRound() {
+        if (this.onlineController.getState().roomSnapshot) {
+            this.onlineController.sendPlayerAction({ kind: 'BEGIN_ROUND' });
+            return true;
+        }
+        return this.matchController.beginRound();
+    }
+
+    endCurrentRound(winner, reason) {
+        this.matchController.endRound(winner, reason);
+    }
+
+    onPieceCaptured(capturedPiece, killerPlayer) {
+        this.matchController.onPieceCaptured(capturedPiece, killerPlayer);
+    }
+
+    getRoundState() {
+        return this.matchController.roundState;
+    }
+
+    getMatchState() {
+        return this.matchController.matchState;
+    }
+
+    getOnlineState() {
+        return this.onlineController.getState();
+    }
+
+    sendCanvasClickAction(x, y) {
+        this.onlineController.sendPlayerAction({
+            kind: 'CANVAS_CLICK',
+            x,
+            y,
+            mode: this.gameMode,
+            currentPlayer: this.currentPlayer
+        });
+    }
+
+    sendStateSyncAction() {
+        this.onlineController.sendPlayerAction({
+            kind: 'SYNC_STATE',
+            boardState: this.board.getState(),
+            state: {
+                currentPlayer: this.currentPlayer,
+                gameMode: this.gameMode,
+                riverBlockedTurns: this.riverBlockedTurns || 0,
+                extraTurns: this.extraTurns || 0
+            }
+        });
+    }
+
+    applyRemoteSharedState(sharedState) {
+        if (!sharedState || !sharedState.boardState) return;
+        this.applyingRemoteAction = true;
+        try {
+            this.board.setState(sharedState.boardState);
+            this.currentPlayer = sharedState.currentPlayer || this.currentPlayer;
+            this.gameMode = sharedState.gameMode || this.gameMode;
+            this.riverBlockedTurns = sharedState.riverBlockedTurns || 0;
+            this.extraTurns = sharedState.extraTurns || 0;
+            this.selectedPiece = null;
+            this.waitingForTarget = null;
+        } finally {
+            this.applyingRemoteAction = false;
+        }
+    }
+
+    applyRemoteCanvasClick(action) {
+        if (!action) return;
+        this.applyingRemoteAction = true;
+        try {
+            if (this.gameMode !== action.mode) {
+                this.gameMode = action.mode;
+            }
+            if (this.gameMode === 'place') {
+                this.handleGoClick(action.x, action.y);
+            } else {
+                this.handleChessClick(action.x, action.y);
+            }
+        } finally {
+            this.applyingRemoteAction = false;
+        }
+    }
+
+    createOnlineRoom() {
+        this.onlineController.createRoom();
+    }
+
+    joinOnlineRoom(roomId) {
+        this.onlineController.joinRoom(roomId);
+    }
+
+    leaveOnlineRoom() {
+        this.onlineController.leaveRoom();
+    }
+
+    setOnlineReady(ready) {
+        this.onlineController.setReady(ready);
+    }
+
+    startOnlineMatch(mode) {
+        this.onlineController.startMatch(mode);
+    }
+
+    refreshOnlineRooms() {
+        this.onlineController.refreshRooms();
     }
 
     showKillFeed(killerName, victimName, type = 'eat') {
@@ -170,6 +310,9 @@ class ChaosChessApp {
     }
 
     render() {
+        const onlineState = this.getOnlineState();
+        const perspective = onlineState?.roomSnapshot ? (onlineState.color || 'red') : 'red';
+        this.renderer.setPerspective(perspective);
         this.renderer.renderLocalGame({
             board: this.board,
             gameMode: this.gameMode,

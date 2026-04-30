@@ -19,6 +19,12 @@ export class TurnController {
         const messages = this.app.effectManager.tickEffects(this.app.board.pieces, this.app.currentPlayer);
         messages.forEach(msg => this.app.showNotification(msg, 'info'));
 
+        if (this.app.matchController?.matchState) {
+            const score = this.app.matchController.matchState.score;
+            this.app.updateStatus(`第 ${this.app.matchController.matchState.currentRound} 局 | 比分 ${score.red}:${score.black} | 当前玩家: ${this.app.currentPlayer === 'red' ? '红方' : '黑方'}`);
+            return;
+        }
+
         this.app.updateStatus(`当前玩家: ${this.app.currentPlayer === 'red' ? '红方' : '黑方'}`);
     }
 

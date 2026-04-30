@@ -218,17 +218,17 @@
     <div id="notification-container"></div>
 
     <div id="app">
-        <h1>🎭 混乱棋局 - 插件化架构演示</h1>
+        <h1>混乱棋局 - 联机版</h1>
 
-        <canvas id="canvas" width="500" height="550"></canvas>
+        <div id="lobby-view" style="display:none; margin: 8px 0 12px 0;"></div>
+        <div id="room-view" style="display:none; margin: 8px 0 12px 0;"></div>
 
-        <div id="status">
-            正在加载插件系统...
-        </div>
+        <div id="match-view" style="display:none;">
+            <canvas id="canvas" width="500" height="550"></canvas>
 
-        <div class="plugin-info">
-            <h3>已加载的插件</h3>
-            <div id="plugin-list" class="plugin-list"></div>
+            <div id="status">
+                正在加载插件系统...
+            </div>
         </div>
     </div>
 
@@ -242,9 +242,10 @@
                 </div>
                 <div>
                     <span style="color: #FFD700; margin-right: 15px;" id="selected-hand-type">请选择5张牌</span>
-                    <button onclick="window.app.playPokerHand()"
+                    <button id="play-poker-btn" onclick="window.app.playPokerHand()"
                         style="background: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">✨
                         出牌</button>
+                    <span id="poker-unlock-tip" style="color: #fca5a5; margin-right: 10px; font-size: 13px; display: none;">需先在商店购买“德州扑克效果”</span>
                     <button onclick="window.app.togglePoker()"
                         style="background: #666; color: white; padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer;">🔽
                         收起</button>

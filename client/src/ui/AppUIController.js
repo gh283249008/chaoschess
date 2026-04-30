@@ -1,7 +1,23 @@
+const SHOP_CATEGORIES = [
+    { key: 'chess', title: '棋类' },
+    { key: 'card', title: '牌类' },
+    { key: 'special', title: '特殊类' }
+];
+
+const SHOP_ITEMS = [
+    { id: 'chess_opening', category: 'chess', name: '布局强化', desc: '即将开放', price: 180, disabled: true },
+    { id: 'go_control', category: 'chess', name: '控盘强化', desc: '即将开放', price: 200, disabled: true },
+    { id: 'poker_global', category: 'card', name: '德州扑克效果', desc: '本局可使用所有牌型效果', price: 420, disabled: false },
+    { id: 'special_supply', category: 'special', name: '战术补给', desc: '即将开放', price: 260, disabled: true },
+    { id: 'special_repair', category: 'special', name: '紧急修复', desc: '即将开放', price: 300, disabled: true }
+];
+
 export class AppUIController {
     constructor(app) {
         this.app = app;
         this.modeBtn = null;
+        this.currentView = 'lobby';
+        this.countdownTicker = null;
     }
 
     initControls() {
@@ -13,9 +29,311 @@ export class AppUIController {
         this.modeBtn = this.createButton('切换到围棋模式', '#667eea', () => this.app.toggleMode());
         statusDiv.appendChild(this.modeBtn);
 
-        const pokerBtn = this.createButton('🎴 扑克', '#764ba2', () => this.app.togglePoker());
+        const pokerBtn = this.createButton('扑克', '#764ba2', () => this.app.togglePoker());
         pokerBtn.style.marginLeft = '10px';
         statusDiv.appendChild(pokerBtn);
+
+        const shopBtn = this.createButton('商店', '#2f855a', () => this.toggleRoundShop());
+        shopBtn.style.marginLeft = '10px';
+        statusDiv.appendChild(shopBtn);
+
+        this.renderRoundShop();
+        this.renderOnlinePanel(this.app.getOnlineState());
+        this.ensureCountdownTicker();
+    }
+
+    ensureCountdownTicker() {
+        if (this.countdownTicker) return;
+        this.countdownTicker = setInterval(() => {
+            if (this.currentView === 'match') {
+                this.renderRoundShop();
+            }
+        }, 1000);
+    }
+
+    toggleRoundShop() {
+        const panel = document.getElementById('round-shop-panel');
+        if (!panel) return;
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+
+    renderRoundShop() {
+        const appRoot = document.getElementById('app');
+        if (!appRoot) return;
+
+        let panel = document.getElementById('round-shop-panel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'round-shop-panel';
+            panel.style.cssText = 'margin-top: 16px; border: 1px solid #d6d6d6; border-radius: 10px; padding: 14px; background: #fafafa;';
+            appRoot.appendChild(panel);
+        }
+
+        const onlineState = this.app.getOnlineState();
+        const remoteSnapshot = onlineState?.roomSnapshot || null;
+        const roundState = remoteSnapshot?.roundState || this.app.getRoundState();
+        const matchState = remoteSnapshot?.matchState || this.app.getMatchState();
+        if (!roundState || !matchState) {
+            panel.innerHTML = '<div style="color:#666;">商店加载中...</div>';
+            return;
+        }
+
+        const currentPlayer = remoteSnapshot ? (onlineState.color || this.app.currentPlayer) : this.app.currentPlayer;
+        const economy = remoteSnapshot ? roundState.economies[currentPlayer] : this.app.matchController.getEconomy(currentPlayer);
+        const loadout = remoteSnapshot
+            ? { purchasedEffects: (roundState.loadouts[currentPlayer]?.purchasedEffects || []).map(effectId => ({ effectId })) }
+            : this.app.matchController.getLoadout(currentPlayer);
+        const purchasedCount = loadout.purchasedEffects.length;
+        const isBuying = remoteSnapshot ? roundState.status === 'buying' : this.app.matchController.isRoundBuying();
+        const isFinished = !!matchState.winner;
+        const phaseText = isBuying ? '购物时间' : '对局时间';
+        const countdownText = remoteSnapshot && isBuying
+            ? this.getBuyCountdownText(roundState.buyEndsAt)
+            : '';
+
+        panel.innerHTML = '';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;';
+        header.innerHTML = `
+            <div>
+                <div style="font-size:16px; color:#1f2937; font-weight:700;">Round 前商店</div>
+                <div style="font-size:13px; color:#4b5563; margin-top:4px;">第 ${matchState.currentRound} 局 | 阶段：${phaseText}${countdownText} | 我的颜色 ${currentPlayer === 'red' ? '红方' : '黑方'} | 余额 ${economy?.credits ?? '-'} | 已购 ${purchasedCount}/3</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button id="round-begin-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:pointer;">开始本局</button>
+                <button id="round-next-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#374151; color:#fff; cursor:pointer;">下一局</button>
+            </div>
+        `;
+        panel.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px;';
+        panel.appendChild(body);
+
+        SHOP_CATEGORIES.forEach(category => {
+            const section = document.createElement('div');
+            section.style.cssText = 'border:1px solid #e5e7eb; border-radius:8px; background:#fff; padding:10px; min-height:120px;';
+
+            const title = document.createElement('div');
+            title.textContent = category.title;
+            title.style.cssText = 'font-size:14px; font-weight:700; color:#111827; margin-bottom:8px;';
+            section.appendChild(title);
+
+            const items = SHOP_ITEMS.filter(item => item.category === category.key);
+            items.forEach(item => {
+                const row = document.createElement('div');
+                row.style.cssText = 'margin-bottom:8px; border-top:1px solid #f3f4f6; padding-top:8px;';
+
+                const name = document.createElement('div');
+                name.textContent = `${item.name} (${this.getItemPrice(item)} 资金)`;
+                name.style.cssText = 'font-size:13px; color:#1f2937; font-weight:600;';
+
+                const desc = document.createElement('div');
+                desc.textContent = item.desc;
+                desc.style.cssText = 'font-size:12px; color:#6b7280; margin-top:2px;';
+
+                const buyBtn = document.createElement('button');
+                buyBtn.textContent = '购买';
+                buyBtn.style.cssText = 'margin-top:6px; padding:5px 10px; border:none; border-radius:5px; background:#10b981; color:#fff; cursor:pointer;';
+
+                const alreadyOwned = loadout.purchasedEffects.some(entry => entry.effectId === item.id);
+                const cannotBuyNow = !isBuying || item.disabled || alreadyOwned || purchasedCount >= 3;
+                if (alreadyOwned) {
+                    buyBtn.textContent = '已购买';
+                }
+                if (item.disabled) {
+                    buyBtn.textContent = '待开放';
+                }
+                if (cannotBuyNow) {
+                    buyBtn.disabled = true;
+                    buyBtn.style.opacity = '0.55';
+                    buyBtn.style.cursor = 'not-allowed';
+                }
+
+                buyBtn.onclick = () => {
+                    const result = this.app.purchaseEffect(item.id);
+                    this.app.showNotification(result.message, result.success ? 'success' : 'warning');
+                    this.renderRoundShop();
+                    if (this.app.pokerController && typeof this.app.pokerController.renderPokerHand === 'function') {
+                        this.app.pokerController.renderPokerHand();
+                    }
+                };
+
+                row.appendChild(name);
+                row.appendChild(desc);
+                row.appendChild(buyBtn);
+                section.appendChild(row);
+            });
+
+            body.appendChild(section);
+        });
+
+        const beginBtn = document.getElementById('round-begin-btn');
+        const nextBtn = document.getElementById('round-next-btn');
+
+        if (remoteSnapshot) {
+            beginBtn.style.display = 'none';
+        }
+
+        beginBtn.disabled = !isBuying || isFinished || !!remoteSnapshot;
+        if (beginBtn.disabled) {
+            beginBtn.style.opacity = '0.55';
+            beginBtn.style.cursor = 'not-allowed';
+        }
+        beginBtn.onclick = () => {
+            const ok = this.app.beginRound();
+            if (ok) {
+                this.app.showNotification('本局开始', 'success');
+                this.renderRoundShop();
+            }
+        };
+
+        nextBtn.disabled = roundState.status !== 'ended' || isFinished;
+        if (nextBtn.disabled) {
+            nextBtn.style.opacity = '0.55';
+            nextBtn.style.cursor = 'not-allowed';
+        }
+        nextBtn.onclick = () => {
+            this.app.startNextRound();
+            this.renderRoundShop();
+        };
+    }
+
+    renderOnlinePanel(onlineState) {
+        const lobbyView = document.getElementById('lobby-view');
+        const roomView = document.getElementById('room-view');
+        if (!lobbyView || !roomView) return;
+
+        const state = onlineState || { connected: false, rooms: [] };
+        const snapshot = state.roomSnapshot;
+        const isHost = snapshot?.players?.[0]?.id === state.clientId;
+        const selfReady = snapshot?.readyByPlayer?.[state.clientId] || false;
+
+        const targetView = this.resolveView(state);
+        this.setView(targetView);
+
+        lobbyView.innerHTML = this.renderLobbyHtml(state);
+        roomView.innerHTML = this.renderRoomHtml(state, snapshot, selfReady, isHost);
+
+        const createBtn = document.getElementById('online-create-btn');
+        const joinBtn = document.getElementById('online-join-btn');
+        const refreshBtn = document.getElementById('online-refresh-btn');
+        const roomInput = document.getElementById('online-room-input');
+        if (createBtn) createBtn.onclick = () => this.app.createOnlineRoom();
+        if (joinBtn) joinBtn.onclick = () => this.app.joinOnlineRoom(roomInput.value || '');
+        if (refreshBtn) refreshBtn.onclick = () => this.app.refreshOnlineRooms();
+
+        const quickJoinButtons = document.querySelectorAll('.online-quick-join-btn');
+        quickJoinButtons.forEach(btn => {
+            btn.onclick = () => {
+                const roomId = btn.getAttribute('data-room-id') || '';
+                this.app.joinOnlineRoom(roomId);
+            };
+        });
+
+        const readyBtn = document.getElementById('online-ready-btn');
+        const startBtn = document.getElementById('online-start-btn');
+        const leaveBtn = document.getElementById('online-leave-btn');
+        if (readyBtn) readyBtn.onclick = () => this.app.setOnlineReady(!selfReady);
+        if (startBtn) startBtn.onclick = () => this.app.startOnlineMatch('BO3');
+        if (leaveBtn) leaveBtn.onclick = () => this.app.leaveOnlineRoom();
+    }
+
+    resolveView(state) {
+        if (!state.connected) return 'lobby';
+        if (!state.roomId || !state.roomSnapshot) return 'lobby';
+        if (state.roomSnapshot.status === 'playing' || state.roomSnapshot.status === 'match_end') {
+            return 'match';
+        }
+        return 'room';
+    }
+
+    setView(view) {
+        this.currentView = view;
+        const lobbyView = document.getElementById('lobby-view');
+        const roomView = document.getElementById('room-view');
+        const matchView = document.getElementById('match-view');
+        if (!lobbyView || !roomView || !matchView) return;
+
+        lobbyView.style.display = view === 'lobby' ? 'block' : 'none';
+        roomView.style.display = view === 'room' ? 'block' : 'none';
+        matchView.style.display = view === 'match' ? 'block' : 'none';
+
+        const shopPanel = document.getElementById('round-shop-panel');
+        if (shopPanel) {
+            shopPanel.style.display = view === 'match' ? 'block' : 'none';
+        }
+
+        const pokerContainer = document.getElementById('poker-hand-container');
+        if (pokerContainer && view !== 'match') {
+            pokerContainer.classList.add('translate-y-full');
+        }
+    }
+
+    renderLobbyHtml(state) {
+        const rooms = state.rooms || [];
+        const roomRows = rooms.length === 0
+            ? '<div style="color:#6b7280; font-size:13px;">暂无可加入房间</div>'
+            : rooms.map(r => `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px;">
+                    <div style="font-size:13px; color:#1f2937;">${r.id} (${r.playerCount}/2, ${r.status})</div>
+                    <button class="online-quick-join-btn" data-room-id="${r.id}" style="padding:5px 9px; border:none; border-radius:5px; background:#2563eb; color:#fff; cursor:pointer; font-size:12px;">加入</button>
+                </div>
+            `).join('');
+
+        return `
+            <div style="border:1px solid #d1d5db; border-radius:10px; padding:14px; background:#ffffff;">
+                <div style="font-size:18px; font-weight:700; color:#111827;">大厅</div>
+                <div style="font-size:12px; color:${state.connected ? '#166534' : '#991b1b'}; margin-top:4px;">${state.connected ? '联机已连接' : '联机未连接'}</div>
+                <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+                    <button id="online-create-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#0f766e; color:#fff; cursor:pointer;">创建房间</button>
+                    <input id="online-room-input" placeholder="输入房间号" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:6px;" />
+                    <button id="online-join-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:pointer;">加入房间</button>
+                    <button id="online-refresh-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#374151; color:#fff; cursor:pointer;">刷新列表</button>
+                </div>
+                <div style="margin-top:12px; border-top:1px solid #e5e7eb; padding-top:8px;">
+                    <div style="font-size:13px; font-weight:600; color:#111827;">公共大厅房间</div>
+                    ${roomRows}
+                </div>
+            </div>
+        `;
+    }
+
+    renderRoomHtml(state, snapshot, selfReady, isHost) {
+        if (!snapshot) {
+            return '<div style="color:#6b7280;">房间状态同步中...</div>';
+        }
+        const playerRows = (snapshot.players || []).map(p => {
+            const ready = !!snapshot.readyByPlayer?.[p.id];
+            return `<div style="font-size:13px; color:#1f2937; margin-top:4px;">${p.color === 'red' ? '红方' : '黑方'} - ${p.token} - ${ready ? '已准备' : '未准备'}</div>`;
+        }).join('');
+
+        return `
+            <div style="border:1px solid #d1d5db; border-radius:10px; padding:14px; background:#ffffff;">
+                <div style="font-size:18px; font-weight:700; color:#111827;">房间 ${state.roomId || '-'}</div>
+                <div style="font-size:12px; color:#4b5563; margin-top:4px;">我的颜色: ${state.color || '-'} | 我的凭证: ${state.clientToken || '-'}</div>
+                <div style="margin-top:10px;">${playerRows}</div>
+                <div style="display:flex; gap:8px; margin-top:12px;">
+                    <button id="online-ready-btn" style="padding:8px 12px; border:none; border-radius:6px; background:${selfReady ? '#166534' : '#15803d'}; color:#fff; cursor:pointer;">${selfReady ? '取消准备' : '准备'}</button>
+                    <button id="online-start-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#1d4ed8; color:#fff; cursor:${isHost ? 'pointer' : 'not-allowed'}; opacity:${isHost ? '1' : '0.55'};" ${isHost ? '' : 'disabled'}>双方就绪后开始对局</button>
+                    <button id="online-leave-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#b91c1c; color:#fff; cursor:pointer;">离开房间</button>
+                </div>
+            </div>
+        `;
+    }
+
+    getBuyCountdownText(buyEndsAt) {
+        if (!buyEndsAt) return '';
+        const msLeft = buyEndsAt - Date.now();
+        const sec = Math.max(0, Math.ceil(msLeft / 1000));
+        return `（倒计时 ${sec}s）`;
+    }
+
+    getItemPrice(item) {
+        const fromConfig = this.app.matchController.getEffectPrice(item.id);
+        if (fromConfig) return fromConfig;
+        return item.price;
     }
 
     updateModeUI(gameMode) {
@@ -24,10 +342,10 @@ export class AppUIController {
         }
 
         if (gameMode === 'move') {
-            this.modeBtn.textContent = '♟️ 下棋模式';
+            this.modeBtn.textContent = '下棋模式';
             this.updateStatus('下棋模式 - 移动棋子');
         } else {
-            this.modeBtn.textContent = '⚫ 落子模式';
+            this.modeBtn.textContent = '落子模式';
             this.updateStatus('落子模式 - 放置围棋子');
         }
     }
@@ -53,20 +371,10 @@ export class AppUIController {
             return;
         }
 
-        pluginListEl.innerHTML = '';
-
-        if (plugins.pieces.length === 0 && plugins.cards.length === 0) {
-            pluginListEl.innerHTML = '<span style="color: #999;">暂无插件加载</span>';
-            return;
+        const pluginInfo = pluginListEl.closest('.plugin-info');
+        if (pluginInfo) {
+            pluginInfo.style.display = 'none';
         }
-
-        plugins.pieces.forEach(name => {
-            pluginListEl.appendChild(this.createPluginBadge(`♟️ ${name}`));
-        });
-
-        plugins.cards.forEach(name => {
-            pluginListEl.appendChild(this.createPluginBadge(`🃏 ${name}`, '#764ba2'));
-        });
     }
 
     createButton(text, background, onClick) {

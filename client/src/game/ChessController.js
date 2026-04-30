@@ -7,20 +7,20 @@ export class ChessController {
         const clickedPiece = this.app.board.getPieceAt(gridX, gridY);
 
         if (this.trySelectPiece(clickedPiece)) {
-            return;
+            return false;
         }
 
         if (!this.app.selectedPiece) {
-            return;
+            return false;
         }
 
         const valid = this.validateSelectedPieceMove(gridX, gridY);
         if (!valid) {
             this.handleInvalidMove(gridX, gridY);
-            return;
+            return false;
         }
 
-        this.applyMove(gridX, gridY);
+        return this.applyMove(gridX, gridY);
     }
 
     trySelectPiece(clickedPiece) {
@@ -76,14 +76,17 @@ export class ChessController {
     applyMove(gridX, gridY) {
         const piece = this.app.selectedPiece;
         const target = this.app.board.getPieceAt(gridX, gridY);
+        const roundWinByCapture = target ? this.isRoundWinningCapture(target) : false;
 
         if (target) {
             this.app.board.removePiece(target);
             console.log(`${piece.type} captured ${target.type}`);
+            this.app.onPieceCaptured(target, this.app.currentPlayer);
 
             const killerName = `${this.app.currentPlayer === 'red' ? '🔴' : '⚫'}${piece.type}`;
             const victimName = `${target.player === 'red' ? '🔴' : '⚫'}${target.type}`;
             this.app.showKillFeed(killerName, victimName);
+
         }
 
         const from = { x: piece.x, y: piece.y };
@@ -95,10 +98,23 @@ export class ChessController {
         const promotionPending = this.handlePieceMovedCallback(piece, from, to);
         this.app.selectedPiece = null;
 
+        if (roundWinByCapture) {
+            this.app.endCurrentRound(this.app.currentPlayer, '击杀主将');
+            this.app.render();
+            return true;
+        }
+
         if (!promotionPending) {
             this.app.switchPlayer();
         }
         this.app.render();
+        return true;
+    }
+
+    isRoundWinningCapture(target) {
+        if (!target) return false;
+        const type = String(target.type || '');
+        return type === '将' || type === '帅' || type === 'King' || type === 'king';
     }
 
     handlePieceMovedCallback(piece, from, to) {

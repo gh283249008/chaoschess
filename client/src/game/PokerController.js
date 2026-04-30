@@ -29,6 +29,8 @@ export class PokerController {
         const container = document.getElementById('hand-cards');
         const playerNameEl = document.getElementById('poker-player-name');
         const handTypeEl = document.getElementById('selected-hand-type');
+        const playBtn = document.getElementById('play-poker-btn');
+        const unlockTip = document.getElementById('poker-unlock-tip');
 
         container.innerHTML = '';
         const hand = this.app.pokerHands[this.app.currentPlayer] || [];
@@ -60,6 +62,8 @@ export class PokerController {
         } else if (handTypeEl) {
             handTypeEl.textContent = '请选择5张牌';
         }
+
+        this.updatePlayButtonState(playBtn, unlockTip);
     }
 
     handleCardClick(card) {
@@ -74,13 +78,31 @@ export class PokerController {
         this.renderPokerHand();
     }
 
+    purchaseSelectedHandEffect() {
+        const effectId = 'poker_global';
+        const result = this.app.matchController.purchaseEffect(effectId, this.app.currentPlayer);
+        this.app.showNotification(result.message, result.success ? 'success' : 'warning');
+        return result;
+    }
+
     playPokerHand() {
         if (this.app.selectedCards.length !== 5) {
             this.app.showNotification('请选择5张牌！', 'warning');
             return;
         }
 
+        if (!this.app.matchController?.isRoundActive()) {
+            this.app.showNotification('当前局未开始，无法出牌。', 'warning');
+            return;
+        }
+
         const evalResult = this.app.pokerPlugin.evaluateHand(this.app.selectedCards);
+        if (!this.hasPurchasedPokerAccess(this.app.currentPlayer)) {
+            const price = this.app.matchController.getEffectPrice('poker_global');
+            this.app.showNotification(`未购买德州扑克效果（本局价格 ${price}）`, 'warning');
+            return;
+        }
+
         console.log(`Playing hand: ${evalResult.name} (rank: ${evalResult.rank})`);
 
         this.app.pokerHands[this.app.currentPlayer] = this.app.pokerHands[this.app.currentPlayer].filter(
@@ -208,6 +230,28 @@ export class PokerController {
             gameState: this.app.board,
             currentPlayer: this.app.currentPlayer
         };
+    }
+
+    hasPurchasedPokerAccess(player) {
+        const onlineState = this.app.getOnlineState?.();
+        const remoteLoadout = onlineState?.roomSnapshot?.roundState?.loadouts?.[player];
+        if (remoteLoadout) {
+            return (remoteLoadout.purchasedEffects || []).includes('poker_global');
+        }
+
+        const loadout = this.app.matchController.getLoadout(player);
+        return loadout.purchasedEffects.some(item => item.effectId === 'poker_global');
+    }
+
+    updatePlayButtonState(playBtn, unlockTip) {
+        if (!playBtn) return;
+
+        const hasAccess = this.hasPurchasedPokerAccess(this.app.currentPlayer);
+        playBtn.style.display = hasAccess ? 'inline-block' : 'none';
+
+        if (unlockTip) {
+            unlockTip.style.display = hasAccess ? 'none' : 'inline';
+        }
     }
 
     playerMarker() {

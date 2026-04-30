@@ -4,9 +4,11 @@
   "type": "module",
   "description": "混乱棋局 - 象棋×围棋×炸弹的创新混合对战游戏",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "preview": "npm --prefix client run preview",
+    "dev:server": "npm --prefix server run dev",
+    "start:server": "npm --prefix server run start"
   },
   "devDependencies": {
     "vite": "^7.2.2"

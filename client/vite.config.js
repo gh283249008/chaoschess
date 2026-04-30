@@ -6,6 +6,13 @@ export default {
     },
     server: {
         port: 9001,
-        allowedHosts: ['.monkeycode-ai.online']
+        allowedHosts: ['.monkeycode-ai.online'],
+        proxy: {
+            '/ws': {
+                target: 'ws://127.0.0.1:8080',
+                ws: true,
+                changeOrigin: true
+            }
+        }
     }
 };

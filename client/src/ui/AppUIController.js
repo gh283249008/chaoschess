@@ -1,15 +1,15 @@
 const SHOP_CATEGORIES = [
     { key: 'chess', title: '棋类' },
-    { key: 'card', title: '牌类' },
     { key: 'special', title: '特殊类' }
 ];
 
 const SHOP_ITEMS = [
-    { id: 'chess_opening', category: 'chess', name: '布局强化', desc: '即将开放', price: 180, disabled: true },
-    { id: 'go_control', category: 'chess', name: '控盘强化', desc: '即将开放', price: 200, disabled: true },
-    { id: 'poker_global', category: 'card', name: '德州扑克效果', desc: '本局可使用所有牌型效果', price: 420, disabled: false },
-    { id: 'special_supply', category: 'special', name: '战术补给', desc: '即将开放', price: 260, disabled: true },
-    { id: 'special_repair', category: 'special', name: '紧急修复', desc: '即将开放', price: 300, disabled: true }
+    { id: 'intl_chess_global', category: 'chess', name: '国际象棋体系', desc: '本局己方棋子改为国际象棋并使用对应规则（含升变、王车易位）。', actionConsumesMove: false, price: 360, disabled: false },
+    { id: 'flip_chess_pair', category: 'chess', name: '翻转棋 +2', desc: '购买后获得 2 枚翻转棋，可重复购买。落子或移动后若两端均为我方翻转棋，则中间连续敌子全部翻为我方。', actionConsumesMove: false, price: 280, disabled: false },
+    { id: 'chess_opening', category: 'chess', name: '布局强化', desc: '即将开放', actionConsumesMove: false, price: 180, disabled: true },
+    { id: 'go_control', category: 'chess', name: '控盘强化', desc: '即将开放', actionConsumesMove: false, price: 200, disabled: true },
+    { id: 'special_supply', category: 'special', name: '战术补给', desc: '即将开放', actionConsumesMove: false, price: 260, disabled: true },
+    { id: 'special_repair', category: 'special', name: '紧急修复', desc: '即将开放', actionConsumesMove: false, price: 300, disabled: true }
 ];
 
 const ONLINE_ERROR_TEXT = {
@@ -37,6 +37,7 @@ export class AppUIController {
     constructor(app) {
         this.app = app;
         this.modeBtn = null;
+        this.placePieceBtn = null;
         this.currentView = 'lobby';
         this.countdownTicker = null;
     }
@@ -57,6 +58,10 @@ export class AppUIController {
         this.modeBtn = this.createButton('切换到围棋模式', '#667eea', () => this.app.toggleMode());
         statusDiv.appendChild(this.modeBtn);
 
+        this.placePieceBtn = this.createButton('落子：围棋', '#0f766e', () => this.togglePlacePieceType());
+        this.placePieceBtn.style.marginLeft = '10px';
+        statusDiv.appendChild(this.placePieceBtn);
+
         const pokerBtn = this.createButton('扑克', '#764ba2', () => this.app.togglePoker());
         pokerBtn.style.marginLeft = '10px';
         statusDiv.appendChild(pokerBtn);
@@ -68,6 +73,12 @@ export class AppUIController {
         this.renderRoundShop();
         this.renderOnlinePanel(this.app.getOnlineState());
         this.ensureCountdownTicker();
+        this.updateModeUI(this.app.gameMode);
+    }
+
+    togglePlacePieceType() {
+        const nextType = this.app.placeModePieceType === 'flip' ? 'go' : 'flip';
+        this.app.setPlaceModePieceType(nextType);
     }
 
     ensureCountdownTicker() {
@@ -111,7 +122,12 @@ export class AppUIController {
         const loadout = remoteSnapshot
             ? { purchasedEffects: (roundState.loadouts[currentPlayer]?.purchasedEffects || []).map(effectId => ({ effectId })) }
             : this.app.matchController.getLoadout(currentPlayer);
-        const purchasedCount = loadout.purchasedEffects.length;
+        const purchasedCount = remoteSnapshot
+            ? (roundState.loadouts[currentPlayer]?.purchasedEffects?.length || 0)
+            : this.app.matchController.getPurchasedEffectSlotUsage(loadout);
+        const flipChessStock = remoteSnapshot
+            ? (roundState.loadouts[currentPlayer]?.flipChessStock || 0)
+            : (loadout.flipChessStock || 0);
         const isBuying = remoteSnapshot ? roundState.status === 'buying' : this.app.matchController.isRoundBuying();
         const isFinished = !!matchState.winner;
         const phaseText = isBuying ? '购物时间' : '对局时间';
@@ -126,7 +142,7 @@ export class AppUIController {
         header.innerHTML = `
             <div>
                 <div style="font-size:16px; color:#1f2937; font-weight:700;">Round 前商店</div>
-                <div style="font-size:13px; color:#4b5563; margin-top:4px;">第 ${matchState.currentRound} 局 | 阶段：${phaseText}${countdownText} | 我的颜色 ${currentPlayer === 'red' ? '红方' : '黑方'} | 余额 ${economy?.credits ?? '-'} | 已购 ${purchasedCount}/3</div>
+                <div style="font-size:13px; color:#4b5563; margin-top:4px;">第 ${matchState.currentRound} 局 | 阶段：${phaseText}${countdownText} | 我的颜色 ${currentPlayer === 'red' ? '红方' : '黑方'} | 余额 ${economy?.credits ?? '-'} | 已购 ${purchasedCount}/3 | 翻转棋库存 ${flipChessStock} | 剩余走棋 ${remoteSnapshot ? (roundState.sharedState?.turnBudget?.[currentPlayer] ?? 1) : this.app.getCurrentTurnMovesLeft()}</div>
             </div>
             <div style="display:flex; gap:8px;">
                 <button id="round-begin-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:pointer;">开始本局</button>
@@ -158,14 +174,16 @@ export class AppUIController {
                 name.style.cssText = 'font-size:13px; color:#1f2937; font-weight:600;';
 
                 const desc = document.createElement('div');
-                desc.textContent = item.desc;
+                desc.textContent = `${item.desc}${this.getMoveDeclarationText(item.actionConsumesMove)}`;
                 desc.style.cssText = 'font-size:12px; color:#6b7280; margin-top:2px;';
 
                 const buyBtn = document.createElement('button');
                 buyBtn.textContent = '购买';
                 buyBtn.style.cssText = 'margin-top:6px; padding:5px 10px; border:none; border-radius:5px; background:#10b981; color:#fff; cursor:pointer;';
 
-                const alreadyOwned = loadout.purchasedEffects.some(entry => entry.effectId === item.id);
+                const alreadyOwned = item.id === 'flip_chess_pair'
+                    ? false
+                    : loadout.purchasedEffects.some(entry => entry.effectId === item.id);
                 const cannotBuyNow = !isBuying || item.disabled || alreadyOwned || purchasedCount >= 3;
                 if (alreadyOwned) {
                     buyBtn.textContent = '已购买';
@@ -270,7 +288,8 @@ export class AppUIController {
 
     resolveView(state) {
         if (!state.connected) return 'lobby';
-        if (!state.roomId || !state.roomSnapshot) return 'lobby';
+        if (!state.roomId) return 'lobby';
+        if (!state.roomSnapshot) return 'room';
         if (state.roomSnapshot.status === 'playing' || state.roomSnapshot.status === 'match_end') {
             return 'match';
         }
@@ -301,6 +320,7 @@ export class AppUIController {
 
     renderLobbyHtml(state) {
         const rooms = state.rooms || [];
+        const isPending = !!state.pendingAction;
         const phaseText = ONLINE_PHASE_TEXT[state.connectionPhase] || (state.connected ? '联机已连接' : '联机未连接');
         const roomRows = rooms.length === 0
             ? '<div style="color:#6b7280; font-size:13px;">暂无可加入房间</div>'
@@ -316,10 +336,10 @@ export class AppUIController {
                 <div style="font-size:18px; font-weight:700; color:#111827;">大厅</div>
                 <div style="font-size:12px; color:${state.connectionPhase === 'reconnecting' ? '#b45309' : (state.connected ? '#166534' : '#991b1b')}; margin-top:4px;">${phaseText}</div>
                 <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-                    <button id="online-create-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#0f766e; color:#fff; cursor:pointer;">创建房间</button>
+                    <button id="online-create-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#0f766e; color:#fff; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>创建房间</button>
                     <input id="online-room-input" placeholder="输入房间号" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:6px;" />
-                    <button id="online-join-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:pointer;">加入房间</button>
-                    <button id="online-refresh-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#374151; color:#fff; cursor:pointer;">刷新列表</button>
+                    <button id="online-join-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>加入房间</button>
+                    <button id="online-refresh-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#374151; color:#fff; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>刷新列表</button>
                 </div>
                 <div style="margin-top:12px; border-top:1px solid #e5e7eb; padding-top:8px;">
                     <div style="font-size:13px; font-weight:600; color:#111827;">公共大厅房间</div>
@@ -367,9 +387,18 @@ export class AppUIController {
         return item.price;
     }
 
+    getMoveDeclarationText(actionConsumesMove) {
+        return actionConsumesMove ? ' 该特效视为一步走棋。' : ' 该特效不视为一步走棋。';
+    }
+
     updateModeUI(gameMode) {
         if (!this.modeBtn) {
             return;
+        }
+
+        if (this.placePieceBtn) {
+            this.placePieceBtn.style.display = gameMode === 'place' ? 'inline-block' : 'none';
+            this.placePieceBtn.textContent = this.app.placeModePieceType === 'flip' ? '落子：翻转棋' : '落子：围棋';
         }
 
         if (gameMode === 'move') {
@@ -377,7 +406,7 @@ export class AppUIController {
             this.updateStatus('下棋模式 - 移动棋子');
         } else {
             this.modeBtn.textContent = '落子模式';
-            this.updateStatus('落子模式 - 放置围棋子');
+            this.updateStatus(`落子模式 - 当前放置${this.app.placeModePieceType === 'flip' ? '翻转棋' : '围棋子'}`);
         }
     }
 

@@ -10,11 +10,14 @@ const DEFAULT_ECONOMY_CONFIG = {
     captureCredits: {
         Pawn: 80,
         stone: 70,
+        翻: 120,
         wall: 60,
         default: 120
     },
     effectPrices: {
         poker_global: 420,
+        intl_chess_global: 360,
+        flip_chess_pair: 280,
         0: 150,
         1: 220,
         2: 260,
@@ -80,10 +83,12 @@ export class MatchController {
         this.app.board.smokeEffects = [];
         this.app.selectedPiece = null;
         this.app.waitingForTarget = null;
-        this.app.extraTurns = 0;
         this.app.riverBlockedTurns = 0;
         this.app.currentPlayer = 'red';
         this.app.gameMode = 'move';
+        this.app.placeModePieceType = 'go';
+        this.app.resetTurnBudget('red', 1);
+        this.app.resetTurnBudget('black', 1);
 
         const chineseChess = this.app.pluginManager.getPlugin('pieces', 'ChineseChess');
         if (chineseChess) {
@@ -108,6 +113,7 @@ export class MatchController {
             return false;
         }
 
+        this.applyRoundLoadoutEffects();
         this.roundState.status = 'playing';
         this.app.updateStatus(this.getRoundStatusText());
         if (this.app.ui && typeof this.app.ui.renderRoundShop === 'function') {
@@ -117,12 +123,43 @@ export class MatchController {
     }
 
     createEmptyLoadout() {
-        return { purchasedEffects: [] };
+        return { purchasedEffects: [], flipChessStock: 0 };
+    }
+
+    applyRoundLoadoutEffects() {
+        this.applyInternationalChessLoadoutForPlayer('red');
+        this.applyInternationalChessLoadoutForPlayer('black');
+    }
+
+    applyInternationalChessLoadoutForPlayer(player) {
+        if (!this.canUsePurchasedEffect('intl_chess_global', player)) {
+            return;
+        }
+
+        const intlPlugin = this.app.pluginManager.getPlugin('pieces', 'InternationalChess');
+        if (!intlPlugin || typeof intlPlugin.getInitialSetup !== 'function') {
+            this.app.showNotification('国际象棋插件未加载，效果未生效', 'warning');
+            return;
+        }
+
+        const pieces = this.app.board.pieces;
+        this.app.board.pieces = pieces.filter(p => {
+            if (p.player !== player) return true;
+            return p.pluginSource === 'Go';
+        });
+
+        const targetSetup = intlPlugin.getInitialSetup().filter(p => p.player === player);
+        targetSetup.forEach(piece => {
+            this.app.board.addPiece({ ...piece, hasMoved: false });
+        });
+
+        this.consumePurchasedEffect('intl_chess_global', player);
+        this.app.showNotification(`${player === 'red' ? '红方' : '黑方'}已启用国际象棋体系`, 'info');
     }
 
     getRoundStatusText() {
         const round = this.matchState.currentRound;
-        return `第 ${round} 局 - 当前玩家: ${this.app.currentPlayer === 'red' ? '红方' : '黑方'}`;
+        return `第 ${round} 局 - 当前玩家: ${this.app.currentPlayer === 'red' ? '红方' : '黑方'} | 剩余走棋 ${this.app.getCurrentTurnMovesLeft()}`;
     }
 
     isRoundActive() {
@@ -139,11 +176,12 @@ export class MatchController {
         }
 
         const loadout = this.roundState.loadouts[player];
-        if (loadout.purchasedEffects.length >= 3) {
+        const slotCost = this.getEffectSlotCost(effectId);
+        if (this.getPurchasedEffectSlotUsage(loadout) + slotCost > 3) {
             return { success: false, message: '本局最多购买 3 个效果。' };
         }
 
-        if (loadout.purchasedEffects.some(item => item.effectId === effectId)) {
+        if (effectId !== 'flip_chess_pair' && loadout.purchasedEffects.some(item => item.effectId === effectId)) {
             return { success: false, message: '同名效果每局只能购买 1 次。' };
         }
 
@@ -154,11 +192,22 @@ export class MatchController {
         }
 
         economy.credits -= price;
-        loadout.purchasedEffects.push({ effectId, used: false });
+        loadout.purchasedEffects.push({ effectId, used: false, slotCost });
+        if (effectId === 'flip_chess_pair') {
+            loadout.flipChessStock += 2;
+        }
         if (this.app.ui && typeof this.app.ui.renderRoundShop === 'function') {
             this.app.ui.renderRoundShop();
         }
         return { success: true, message: `购买成功：效果 ${effectId}，花费 ${price}` };
+    }
+
+    getEffectSlotCost(effectId) {
+        return effectId === 'flip_chess_pair' ? 1 : 1;
+    }
+
+    getPurchasedEffectSlotUsage(loadout) {
+        return loadout.purchasedEffects.reduce((total, item) => total + (item.slotCost || 1), 0);
     }
 
     getEffectPrice(effectId) {
@@ -247,5 +296,19 @@ export class MatchController {
 
     getLoadout(player) {
         return this.roundState.loadouts[player];
+    }
+
+    getFlipChessStock(player) {
+        return this.roundState.loadouts[player]?.flipChessStock || 0;
+    }
+
+    consumeFlipChessStock(player = this.app.currentPlayer) {
+        const loadout = this.roundState.loadouts[player];
+        if (!loadout || loadout.flipChessStock <= 0) {
+            return false;
+        }
+
+        loadout.flipChessStock -= 1;
+        return true;
     }
 }

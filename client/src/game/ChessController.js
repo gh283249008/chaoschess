@@ -1,9 +1,16 @@
 export class ChessController {
     constructor(app) {
         this.app = app;
+        this.lastInvalidMoveReason = '';
     }
 
     handleChessClick(gridX, gridY) {
+        if (this.app.getCurrentTurnMovesLeft() <= 0) {
+            this.app.showNotification('当前走棋次数已耗尽，立即切换下一回合', 'warning');
+            this.app.switchPlayer();
+            return false;
+        }
+
         const clickedPiece = this.app.board.getPieceAt(gridX, gridY);
 
         if (this.trySelectPiece(clickedPiece)) {
@@ -40,6 +47,7 @@ export class ChessController {
     }
 
     validateSelectedPieceMove(gridX, gridY) {
+        this.lastInvalidMoveReason = '';
         const piece = this.app.selectedPiece;
         if (!piece) return false;
 
@@ -54,6 +62,16 @@ export class ChessController {
 
         if (piece.pluginSource === 'InternationalChess') {
             const plugin = this.app.pluginManager.getPlugin('pieces', 'InternationalChess');
+            if (!plugin) return false;
+            const valid = plugin.validateMove(piece, from, to, boardState);
+            if (!valid && typeof plugin.explainInvalidMove === 'function') {
+                this.lastInvalidMoveReason = plugin.explainInvalidMove(piece, from, to, boardState) || '';
+            }
+            return valid;
+        }
+
+        if (piece.pluginSource === 'FlipChess') {
+            const plugin = this.app.pluginManager.getPlugin('pieces', 'FlipChess');
             return plugin ? plugin.validateMove(piece, from, to, boardState) : false;
         }
 
@@ -70,15 +88,17 @@ export class ChessController {
         } else {
             console.log('Using InternationalChess logic');
         }
-        this.app.showNotification('移动无效！请检查移动规则', 'warning');
+        this.app.showNotification(this.lastInvalidMoveReason || '移动无效！请检查移动规则', 'warning');
     }
 
     applyMove(gridX, gridY) {
         const piece = this.app.selectedPiece;
+        const from = { x: piece.x, y: piece.y };
+        const to = { x: gridX, y: gridY };
         const target = this.app.board.getPieceAt(gridX, gridY);
         const roundWinByCapture = target ? this.isRoundWinningCapture(target) : false;
 
-        if (target) {
+        if (target && piece.pluginSource !== 'FlipChess') {
             this.app.board.removePiece(target);
             console.log(`${piece.type} captured ${target.type}`);
             this.app.onPieceCaptured(target, this.app.currentPlayer);
@@ -89,11 +109,21 @@ export class ChessController {
 
         }
 
-        const from = { x: piece.x, y: piece.y };
-        const to = { x: gridX, y: gridY };
+        if (target && piece.pluginSource === 'FlipChess') {
+            this.app.showNotification('翻转棋不能直接吃子，只能通过夹击翻转夺取占有权', 'warning');
+            return false;
+        }
 
         piece.x = gridX;
         piece.y = gridY;
+        piece.hasMoved = true;
+
+        const flipped = this.app.resolveFlipCapture(piece);
+        if (piece.pluginSource === 'FlipChess') {
+            this.app.showNotification(`移动翻转棋（视为一步走棋）${flipped.length > 0 ? `，翻转 ${flipped.length} 枚敌子` : ''}`, 'success');
+        }
+
+        this.applyCastlingIfNeeded(piece, from, to);
 
         const promotionPending = this.handlePieceMovedCallback(piece, from, to);
         this.app.selectedPiece = null;
@@ -105,10 +135,31 @@ export class ChessController {
         }
 
         if (!promotionPending) {
-            this.app.switchPlayer();
+            this.app.consumeMoveStep(1);
         }
         this.app.render();
         return true;
+    }
+
+    applyCastlingIfNeeded(piece, from, to) {
+        if (!piece || piece.pluginSource !== 'InternationalChess' || piece.type !== 'King') {
+            return;
+        }
+        if (from.y !== to.y || Math.abs(to.x - from.x) !== 2) {
+            return;
+        }
+
+        const isKingSide = to.x > from.x;
+        const rookFromX = isKingSide ? 7 : 0;
+        const rookToX = isKingSide ? to.x - 1 : to.x + 1;
+        const rook = this.app.board.getPieceAt(rookFromX, from.y);
+        if (!rook || rook.pluginSource !== 'InternationalChess' || rook.type !== 'Rook' || rook.player !== piece.player) {
+            return;
+        }
+
+        rook.x = rookToX;
+        rook.y = from.y;
+        rook.hasMoved = true;
     }
 
     isRoundWinningCapture(target) {
@@ -158,7 +209,7 @@ export class ChessController {
         }
 
         this.app.showNotification(`成功升变为 ${type}`, 'success');
-        this.app.switchPlayer();
+        this.app.consumeMoveStep(1);
         this.app.render();
     }
 }

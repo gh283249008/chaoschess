@@ -11,7 +11,7 @@ export class PokerController {
         if (effectResult.type === 'immediate') {
             this.executeImmediateEffect(effectResult);
         } else if (effectResult.type === 'target_selection') {
-            this.app.showNotification(effectResult.message, 'info');
+            this.app.showNotification(`${effectResult.message}${this.getMoveDeclarationText(effectResult)}`, 'info');
             this.app.waitingForTarget = {
                 handType: effectResult.handType,
                 context
@@ -118,7 +118,7 @@ export class PokerController {
             this.executeImmediateEffect(effectResult);
             this.togglePoker();
         } else if (effectResult.type === 'target_selection') {
-            this.app.showNotification(effectResult.message, 'info');
+            this.app.showNotification(`${effectResult.message}${this.getMoveDeclarationText(effectResult)}`, 'info');
             this.app.waitingForTarget = {
                 handType: effectResult.handType,
                 context: this.createContext()
@@ -134,12 +134,12 @@ export class PokerController {
                 break;
 
             case 'extra_turns':
-                this.app.extraTurns = effectResult.effect.extraTurns;
-                this.app.showNotification(effectResult.message, 'success');
+                this.app.addTurnMoves(this.app.currentPlayer, effectResult.effect.extraTurns);
+                this.app.showNotification(`${effectResult.message}${this.getMoveDeclarationText(effectResult)}`, 'success');
                 break;
 
             case 'block_river':
-                this.app.showNotification(effectResult.message, 'success');
+                this.app.showNotification(`${effectResult.message}${this.getMoveDeclarationText(effectResult)}`, 'success');
                 this.app.board.riverBlocked = true;
                 this.app.riverBlockedTurns = 2;
                 this.app.render();
@@ -147,13 +147,17 @@ export class PokerController {
 
             case 'ban_go':
                 this.app.board.pieces = this.app.board.pieces.filter(p => p.pluginSource !== 'Go');
-                this.app.showNotification(effectResult.message, 'success');
+                this.app.showNotification(`${effectResult.message}${this.getMoveDeclarationText(effectResult)}`, 'success');
                 this.app.render();
                 break;
 
             default:
-                this.app.showNotification(effectResult.message || '效果已执行', 'success');
+                this.app.showNotification(`${effectResult.message || '效果已执行'}${this.getMoveDeclarationText(effectResult)}`, 'success');
         }
+    }
+
+    getMoveDeclarationText(effectResult) {
+        return effectResult?.consumesMove ? ' 该特效视为一步走棋。' : ' 该特效不视为一步走棋。';
     }
 
     executeTargetEffect(x, y) {
@@ -175,6 +179,9 @@ export class PokerController {
     applyTargetEffect(result) {
         switch (result.action) {
             case 'freeze_piece': {
+                if (this.app.removeFlipPieceByAbnormalStatus(result.target, '冻结')) {
+                    break;
+                }
                 const message = this.app.effectManager.applyEffect(result.target, 'freeze', result.duration);
                 this.app.showKillFeed(`${this.playerMarker()}扑克`, `${this.pieceMarker(result.target)}${result.target.type}`, 'freeze');
                 this.app.showNotification(message, 'success');

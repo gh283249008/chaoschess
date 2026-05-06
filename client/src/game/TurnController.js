@@ -4,10 +4,11 @@ export class TurnController {
     }
 
     switchPlayer() {
-        if (this.app.extraTurns > 0) {
-            this.app.extraTurns--;
-            console.log(`Extra turn! Remaining: ${this.app.extraTurns}`);
-            this.app.showNotification(`额外行动机会！剩余 ${this.app.extraTurns} 次`, 'success');
+        this.resolveGoCaptures();
+
+        if (this.app.getCurrentTurnMovesLeft() > 0) {
+            this.app.showNotification(`本回合剩余走棋次数：${this.app.getCurrentTurnMovesLeft()}`, 'success');
+            this.app.updateStatus(this.getTurnStatusText());
             return;
         }
 
@@ -15,17 +16,52 @@ export class TurnController {
         this.tickSmokeEffects();
 
         this.app.currentPlayer = this.app.currentPlayer === 'red' ? 'black' : 'red';
+        this.app.ensureTurnBudgetReady();
 
         const messages = this.app.effectManager.tickEffects(this.app.board.pieces, this.app.currentPlayer);
         messages.forEach(msg => this.app.showNotification(msg, 'info'));
+        this.app.updateStatus(this.getTurnStatusText());
+    }
 
+    getTurnStatusText() {
         if (this.app.matchController?.matchState) {
             const score = this.app.matchController.matchState.score;
-            this.app.updateStatus(`第 ${this.app.matchController.matchState.currentRound} 局 | 比分 ${score.red}:${score.black} | 当前玩家: ${this.app.currentPlayer === 'red' ? '红方' : '黑方'}`);
+            return `第 ${this.app.matchController.matchState.currentRound} 局 | 比分 ${score.red}:${score.black} | 当前玩家: ${this.app.currentPlayer === 'red' ? '红方' : '黑方'} | 剩余走棋 ${this.app.getCurrentTurnMovesLeft()}`;
+        }
+
+        return `当前玩家: ${this.app.currentPlayer === 'red' ? '红方' : '黑方'} | 剩余走棋 ${this.app.getCurrentTurnMovesLeft()}`;
+    }
+
+    resolveGoCaptures() {
+        if (!this.app.goPlugin || typeof this.app.goPlugin.checkCaptures !== 'function') {
             return;
         }
 
-        this.app.updateStatus(`当前玩家: ${this.app.currentPlayer === 'red' ? '红方' : '黑方'}`);
+        const allPieces = this.app.board.pieces;
+        const { captured, suicided } = this.app.goPlugin.checkCaptures(allPieces, this.app.currentPlayer);
+        if (captured.length === 0 && suicided.length === 0) {
+            return;
+        }
+
+        console.log(`Captured: ${captured.length}, Suicided: ${suicided.length}`);
+        [...captured, ...suicided].forEach(piece => {
+            console.log(`Removing ${piece.pluginSource} piece at (${piece.x}, ${piece.y}), player: ${piece.player}`);
+            this.app.board.removePiece(piece);
+
+            if (captured.includes(piece)) {
+                this.app.onPieceCaptured(piece, this.app.currentPlayer);
+                const killerName = `${this.app.currentPlayer === 'red' ? '🔴' : '⚫'}围棋`;
+                const victimName = `${piece.player === 'red' ? '🔴' : '⚫'}${piece.type}`;
+                this.app.showKillFeed(killerName, victimName, 'capture');
+            }
+        });
+
+        if (captured.length > 0) {
+            console.log(`✓ Captured ${captured.length} pieces`);
+        }
+        if (suicided.length > 0) {
+            console.log(`✗ Suicided ${suicided.length} pieces`);
+        }
     }
 
     tickRiverBlock() {

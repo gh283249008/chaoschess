@@ -5,6 +5,7 @@ import { ChineseChessPlugin } from './plugins/pieces/ChineseChess/ChineseChessPl
 import { GoPlugin } from './plugins/pieces/Go/GoPlugin.js';
 import { PokerPlugin } from './plugins/cards/Poker/PokerPlugin.js';
 import { InternationalChessPlugin } from './plugins/pieces/InternationalChess/InternationalChessPlugin.js';
+import { FlipChessPlugin } from './plugins/pieces/FlipChess/FlipChessPlugin.js';
 import { StatusEffectManager } from './core/StatusEffectManager.js';
 import { Renderer } from './ui/Renderer.js';
 import { FeedbackController } from './ui/FeedbackController.js';
@@ -43,6 +44,7 @@ class ChaosChessApp {
         this.currentPlayer = 'red';
         this.selectedPiece = null;
         this.gameMode = 'move'; // 'move' (下棋模式) or 'place' (落子模式)
+        this.placeModePieceType = 'go';
 
         // Go plugin reference
         this.goPlugin = null;
@@ -55,7 +57,10 @@ class ChaosChessApp {
         };
         this.selectedCards = [];
         this.waitingForTarget = null;
-        this.extraTurns = 0;
+        this.turnBudget = {
+            red: 1,
+            black: 1
+        };
         this.applyingRemoteAction = false;
 
         this.init();
@@ -75,6 +80,9 @@ class ChaosChessApp {
 
             const intlChess = new InternationalChessPlugin();
             this.pluginManager.registerPiecePlugin('InternationalChess', intlChess);
+
+            const flipChess = new FlipChessPlugin();
+            this.pluginManager.registerPiecePlugin('FlipChess', flipChess);
 
             this.pokerPlugin = new PokerPlugin();
             this.pluginManager.registerCardPlugin('Poker', this.pokerPlugin);
@@ -129,9 +137,9 @@ class ChaosChessApp {
         this.render();
     }
 
-    // 开发者测试方法
-    testEffect(handType) {
-        this.pokerController.testEffect(handType);
+    setPlaceModePieceType(pieceType) {
+        this.placeModePieceType = pieceType === 'flip' ? 'flip' : 'go';
+        this.ui.updateModeUI(this.gameMode);
     }
 
     // 游戏内通知系统
@@ -148,12 +156,120 @@ class ChaosChessApp {
         this.turnController.switchPlayer();
     }
 
+    getCurrentTurnMovesLeft() {
+        return this.turnBudget[this.currentPlayer] || 0;
+    }
+
+    setCurrentTurnMovesLeft(value) {
+        this.turnBudget[this.currentPlayer] = Math.max(0, value);
+    }
+
+    addTurnMoves(player, delta) {
+        const next = (this.turnBudget[player] || 0) + delta;
+        this.turnBudget[player] = Math.max(0, next);
+    }
+
+    consumeMoveStep(stepCount = 1) {
+        const cost = Math.max(0, stepCount);
+        this.setCurrentTurnMovesLeft(this.getCurrentTurnMovesLeft() - cost);
+        this.switchPlayer();
+    }
+
+    resetTurnBudget(player, value = 1) {
+        this.turnBudget[player] = Math.max(0, value);
+    }
+
+    ensureTurnBudgetReady() {
+        if ((this.turnBudget.red || 0) <= 0) {
+            this.turnBudget.red = 1;
+        }
+        if ((this.turnBudget.black || 0) <= 0) {
+            this.turnBudget.black = 1;
+        }
+    }
+
     handleChessClick(gridX, gridY) {
         return this.chessController.handleChessClick(gridX, gridY);
     }
 
     handlePromotion(type) {
         this.chessController.handlePromotion(type);
+    }
+
+    createFlipPiece(x, y, player = this.currentPlayer) {
+        return {
+            type: '翻',
+            x,
+            y,
+            player,
+            pluginSource: 'FlipChess',
+            hasMoved: false
+        };
+    }
+
+    isFlipPiece(piece) {
+        return piece?.pluginSource === 'FlipChess' && piece?.type === '翻';
+    }
+
+    resolveFlipCapture(originPiece) {
+        if (!this.isFlipPiece(originPiece)) {
+            return [];
+        }
+
+        const directions = [
+            { x: 1, y: 0 },
+            { x: -1, y: 0 },
+            { x: 0, y: 1 },
+            { x: 0, y: -1 },
+            { x: 1, y: 1 },
+            { x: 1, y: -1 },
+            { x: -1, y: 1 },
+            { x: -1, y: -1 }
+        ];
+        const flipped = [];
+
+        directions.forEach(direction => {
+            const candidates = [];
+            let x = originPiece.x + direction.x;
+            let y = originPiece.y + direction.y;
+
+            while (this.board.isValidPosition(x, y)) {
+                const piece = this.board.getPieceAt(x, y);
+                if (!piece) {
+                    return;
+                }
+
+                if (piece.player !== originPiece.player) {
+                    candidates.push(piece);
+                    x += direction.x;
+                    y += direction.y;
+                    continue;
+                }
+
+                if (candidates.length > 0 && this.isFlipPiece(piece)) {
+                    candidates.forEach(enemy => {
+                        enemy.player = originPiece.player;
+                        enemy.flippedBy = originPiece.player;
+                        flipped.push(enemy);
+                    });
+                }
+                return;
+            }
+        });
+
+        return flipped;
+    }
+
+    removeFlipPieceByAbnormalStatus(piece, effectName = '异常状态') {
+        if (!this.isFlipPiece(piece)) {
+            return false;
+        }
+
+        this.board.removePiece(piece);
+        this.showKillFeed(effectName, `${piece.player === 'red' ? '🔴' : '⚫'}翻`, 'capture');
+        this.showNotification(`翻转棋受到${effectName}后立即被提走`, 'warning');
+        this.render();
+        return true;
     }
 
     updateStatus(message) {
@@ -231,6 +347,7 @@ class ChaosChessApp {
             x,
             y,
             mode: this.gameMode,
+            placeModePieceType: this.placeModePieceType,
             currentPlayer: this.currentPlayer
         });
     }
@@ -242,8 +359,9 @@ class ChaosChessApp {
             state: {
                 currentPlayer: this.currentPlayer,
                 gameMode: this.gameMode,
+                placeModePieceType: this.placeModePieceType,
                 riverBlockedTurns: this.riverBlockedTurns || 0,
-                extraTurns: this.extraTurns || 0
+                turnBudget: { ...this.turnBudget }
             }
         });
     }
@@ -255,8 +373,12 @@ class ChaosChessApp {
             this.board.setState(sharedState.boardState);
             this.currentPlayer = sharedState.currentPlayer || this.currentPlayer;
             this.gameMode = sharedState.gameMode || this.gameMode;
+            this.placeModePieceType = sharedState.placeModePieceType || this.placeModePieceType;
             this.riverBlockedTurns = sharedState.riverBlockedTurns || 0;
-            this.extraTurns = sharedState.extraTurns || 0;
+            this.turnBudget = {
+                red: sharedState.turnBudget?.red ?? this.turnBudget.red,
+                black: sharedState.turnBudget?.black ?? this.turnBudget.black
+            };
             this.selectedPiece = null;
             this.waitingForTarget = null;
         } finally {
@@ -271,6 +393,7 @@ class ChaosChessApp {
             if (this.gameMode !== action.mode) {
                 this.gameMode = action.mode;
             }
+            this.placeModePieceType = action.placeModePieceType || this.placeModePieceType;
             if (this.gameMode === 'place') {
                 this.handleGoClick(action.x, action.y);
             } else {
@@ -318,12 +441,13 @@ class ChaosChessApp {
             gameMode: this.gameMode,
             selectedPiece: this.selectedPiece,
             currentPlayer: this.currentPlayer,
-            effectManager: this.effectManager
+            effectManager: this.effectManager,
+            placeModePieceType: this.placeModePieceType
         });
     }
 }
 
 // 启动应用
 window.addEventListener('DOMContentLoaded', () => {
-    window.app = new ChaosChessApp();
+    new ChaosChessApp();
 });

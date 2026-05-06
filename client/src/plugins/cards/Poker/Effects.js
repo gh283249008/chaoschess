@@ -34,7 +34,8 @@ export class PokerEffects {
                 return {
                     type: 'immediate',
                     action: 'undo',
-                    message: '悔棋一次'
+                    message: '悔棋一次',
+                    consumesMove: false
                 };
 
             case 2: // Two Pair: Extra Turns
@@ -42,6 +43,7 @@ export class PokerEffects {
                     type: 'immediate',
                     action: 'extra_turns',
                     message: '获得额外行动机会！您可以连续行动2回合。',
+                    consumesMove: false,
                     effect: { extraTurns: 1 }  // 只需要1次额外回合，因为当前回合已经算1次了
                 };
 
@@ -50,6 +52,7 @@ export class PokerEffects {
                     type: 'immediate',
                     action: 'block_river',
                     message: '河道已封锁！下回合双方棋子不可过河。',
+                    consumesMove: false,
                     effect: { riverBlocked: true }
                 };
 
@@ -58,6 +61,7 @@ export class PokerEffects {
                     type: 'immediate',
                     action: 'ban_go',
                     message: '场上围棋已清空，且禁止再下围棋！',
+                    consumesMove: false,
                     effect: { goBanned: true, clearGoStones: true }
                 };
 
@@ -71,7 +75,8 @@ export class PokerEffects {
                 return {
                     type: 'target_selection',
                     handType,
-                    message: `🔥 ${this.getEffectName(handType)}生效！请在棋盘上选择目标！`
+                    message: `🔥 ${this.getEffectName(handType)}生效！请在棋盘上选择目标！`,
+                    consumesMove: false
                 };
 
             default:

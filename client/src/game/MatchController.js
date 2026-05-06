@@ -18,6 +18,10 @@ const DEFAULT_ECONOMY_CONFIG = {
         poker_global: 420,
         intl_chess_global: 360,
         flip_chess_pair: 280,
+        gomoku_mode: 300,
+        skeleton_revival: 260,
+        ethereal_step: 240,
+        smoke_bomb: 220,
         0: 150,
         1: 220,
         2: 260,
@@ -54,8 +58,8 @@ export class MatchController {
             winner: null,
             reason: null,
             economies: {
-                red: { credits: this.config.baseCredits, lossStreak: 0 },
-                black: { credits: this.config.baseCredits, lossStreak: 0 }
+                red: { credits: this.config.baseCredits, lossStreak: 0, graveyard: 0 },
+                black: { credits: this.config.baseCredits, lossStreak: 0, graveyard: 0 }
             },
             loadouts: {
                 red: this.createEmptyLoadout(),
@@ -123,7 +127,7 @@ export class MatchController {
     }
 
     createEmptyLoadout() {
-        return { purchasedEffects: [], flipChessStock: 0 };
+        return { purchasedEffects: [], flipChessStock: 0, gomokuMode: false, skeletonRevival: false, etherealStep: false, smokeBomb: false };
     }
 
     applyRoundLoadoutEffects() {
@@ -196,6 +200,18 @@ export class MatchController {
         if (effectId === 'flip_chess_pair') {
             loadout.flipChessStock += 2;
         }
+        if (effectId === 'gomoku_mode') {
+            loadout.gomokuMode = true;
+        }
+        if (effectId === 'skeleton_revival') {
+            loadout.skeletonRevival = true;
+        }
+        if (effectId === 'ethereal_step') {
+            loadout.etherealStep = true;
+        }
+        if (effectId === 'smoke_bomb') {
+            loadout.smokeBomb = true;
+        }
         if (this.app.ui && typeof this.app.ui.renderRoundShop === 'function') {
             this.app.ui.renderRoundShop();
         }
@@ -232,6 +248,18 @@ export class MatchController {
     onPieceCaptured(capturedPiece, killerPlayer = this.app.currentPlayer) {
         const credits = this.getCaptureCredits(capturedPiece);
         this.roundState.economies[killerPlayer].credits += credits;
+        if (this.isGraveyardEligible(capturedPiece, killerPlayer)) {
+            this.roundState.economies[killerPlayer].graveyard += 1;
+        }
+    }
+
+    isGraveyardEligible(capturedPiece, killerPlayer) {
+        if (!capturedPiece || !killerPlayer) return false;
+        if (capturedPiece.player !== 'red' && capturedPiece.player !== 'black') return false;
+        if (capturedPiece.player === killerPlayer) return false;
+        if (capturedPiece.pluginSource === 'Go') return false;
+        if (capturedPiece.pluginSource === 'Obstacle') return false;
+        return true;
     }
 
     getCaptureCredits(piece) {
@@ -310,5 +338,36 @@ export class MatchController {
 
         loadout.flipChessStock -= 1;
         return true;
+    }
+
+    hasGomokuMode(player) {
+        return Boolean(this.roundState.loadouts[player]?.gomokuMode);
+    }
+
+    hasSkeletonRevival(player) {
+        return Boolean(this.roundState.loadouts[player]?.skeletonRevival);
+    }
+
+    hasEtherealStep(player) {
+        return Boolean(this.roundState.loadouts[player]?.etherealStep);
+    }
+
+    hasSmokeBomb(player) {
+        return Boolean(this.roundState.loadouts[player]?.smokeBomb);
+    }
+
+    spendGraveyard(player = this.app.currentPlayer, amount = 1) {
+        const economy = this.roundState.economies[player];
+        const cost = Math.max(0, amount);
+        if (!economy || economy.graveyard < cost) {
+            return false;
+        }
+        economy.graveyard -= cost;
+        return true;
+    }
+
+    isGoCaptureDisabledFor(player) {
+        const opponent = player === 'red' ? 'black' : 'red';
+        return this.hasGomokuMode(player) && !this.hasGomokuMode(opponent);
     }
 }

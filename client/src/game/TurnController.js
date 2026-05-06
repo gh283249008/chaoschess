@@ -39,16 +39,18 @@ export class TurnController {
 
         const allPieces = this.app.board.pieces;
         const { captured, suicided } = this.app.goPlugin.checkCaptures(allPieces, this.app.currentPlayer);
+        const captureDisabled = this.app.matchController?.isGoCaptureDisabledFor(this.app.currentPlayer);
+        const effectiveCaptured = captureDisabled ? [] : captured;
         if (captured.length === 0 && suicided.length === 0) {
             return;
         }
 
-        console.log(`Captured: ${captured.length}, Suicided: ${suicided.length}`);
-        [...captured, ...suicided].forEach(piece => {
+        console.log(`Captured: ${effectiveCaptured.length}, Suicided: ${suicided.length}`);
+        [...effectiveCaptured, ...suicided].forEach(piece => {
             console.log(`Removing ${piece.pluginSource} piece at (${piece.x}, ${piece.y}), player: ${piece.player}`);
             this.app.board.removePiece(piece);
 
-            if (captured.includes(piece)) {
+            if (effectiveCaptured.includes(piece)) {
                 this.app.onPieceCaptured(piece, this.app.currentPlayer);
                 const killerName = `${this.app.currentPlayer === 'red' ? '🔴' : '⚫'}围棋`;
                 const victimName = `${piece.player === 'red' ? '🔴' : '⚫'}${piece.type}`;
@@ -56,8 +58,11 @@ export class TurnController {
             }
         });
 
-        if (captured.length > 0) {
-            console.log(`✓ Captured ${captured.length} pieces`);
+        if (captureDisabled && captured.length > 0) {
+            this.app.showNotification('本方启用五子棋模式且对手未启用，本方失去提子能力', 'info');
+        }
+        if (effectiveCaptured.length > 0) {
+            console.log(`✓ Captured ${effectiveCaptured.length} pieces`);
         }
         if (suicided.length > 0) {
             console.log(`✗ Suicided ${suicided.length} pieces`);

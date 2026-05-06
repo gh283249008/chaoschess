@@ -17,6 +17,7 @@ import { ChessController } from './game/ChessController.js';
 import { InputController } from './game/InputController.js';
 import { MatchController } from './game/MatchController.js';
 import { OnlineController } from './network/OnlineController.js';
+import { EffectPipeline } from './game/EffectPipeline.js';
 
 /**
  * 主应用入口
@@ -39,6 +40,7 @@ class ChaosChessApp {
         this.inputController = new InputController(this);
         this.matchController = new MatchController(this);
         this.onlineController = new OnlineController(this);
+        this.effectPipeline = new EffectPipeline(this);
 
         // Game state
         this.currentPlayer = 'red';
@@ -138,7 +140,11 @@ class ChaosChessApp {
     }
 
     setPlaceModePieceType(pieceType) {
-        this.placeModePieceType = pieceType === 'flip' ? 'flip' : 'go';
+        if (pieceType === 'flip' || pieceType === 'skeleton') {
+            this.placeModePieceType = pieceType;
+        } else {
+            this.placeModePieceType = 'go';
+        }
         this.ui.updateModeUI(this.gameMode);
     }
 
@@ -294,7 +300,138 @@ class ChaosChessApp {
     }
 
     executeTargetEffect(x, y) {
+        if (this.waitingForTarget?.type === 'ethereal_step') {
+            return this.executeEtherealStepTarget(x, y);
+        }
+        if (this.waitingForTarget?.type === 'smoke_bomb') {
+            return this.executeSmokeBombTarget(x, y);
+        }
         return this.pokerController.executeTargetEffect(x, y);
+    }
+
+    startSmokeBomb() {
+        if (!this.matchController?.isRoundActive()) {
+            this.showNotification('当前局未开始，无法使用烟雾弹', 'warning');
+            return false;
+        }
+        if (!this.matchController?.hasSmokeBomb(this.currentPlayer)) {
+            this.showNotification('未购买烟雾弹，本局不可使用', 'warning');
+            return false;
+        }
+        if (this.getCurrentTurnMovesLeft() <= 0) {
+            this.showNotification('当前走棋次数已耗尽', 'warning');
+            return false;
+        }
+
+        this.waitingForTarget = {
+            type: 'smoke_bomb'
+        };
+        this.showNotification('烟雾弹：请选择棋盘目标点', 'info');
+        return true;
+    }
+
+    executeSmokeBombTarget(x, y) {
+        if (!this.waitingForTarget || this.waitingForTarget.type !== 'smoke_bomb') {
+            return false;
+        }
+
+        this.board.smokeEffects.push({
+            x,
+            y,
+            player: this.currentPlayer,
+            turns: 3
+        });
+        this.waitingForTarget = null;
+        this.showNotification('烟雾弹已部署（3x3）', 'success');
+        this.consumeMoveStep(1);
+        this.render();
+        this.ui?.renderRoundShop?.();
+        return true;
+    }
+
+    startEtherealStep() {
+        if (!this.matchController?.isRoundActive()) {
+            this.showNotification('当前局未开始，无法使用以太步', 'warning');
+            return false;
+        }
+        if (!this.matchController?.hasEtherealStep(this.currentPlayer)) {
+            this.showNotification('未购买以太步，本局不可使用', 'warning');
+            return false;
+        }
+        if (this.getCurrentTurnMovesLeft() <= 0) {
+            this.showNotification('当前走棋次数已耗尽', 'warning');
+            return false;
+        }
+
+        this.waitingForTarget = {
+            type: 'ethereal_step',
+            stage: 'source'
+        };
+        this.showNotification('以太步：先选择一个己方棋子', 'info');
+        return true;
+    }
+
+    executeEtherealStepTarget(x, y) {
+        const session = this.waitingForTarget;
+        if (!session || session.type !== 'ethereal_step') {
+            return false;
+        }
+
+        const piece = this.board.getPieceAt(x, y);
+        if (session.stage === 'source') {
+            if (!piece || piece.player !== this.currentPlayer) {
+                this.showNotification('请先选择己方棋子作为移动目标', 'warning');
+                return false;
+            }
+            session.source = piece;
+            session.stage = 'anchor';
+            this.showNotification('以太步：再选择一个己方棋子作为锚点', 'info');
+            return false;
+        }
+
+        if (session.stage === 'anchor') {
+            if (!piece || piece.player !== this.currentPlayer) {
+                this.showNotification('请选择己方棋子作为锚点', 'warning');
+                return false;
+            }
+            if (piece === session.source) {
+                this.showNotification('锚点不能与被移动棋子相同', 'warning');
+                return false;
+            }
+            session.anchor = piece;
+            session.stage = 'destination';
+            this.showNotification('以太步：选择锚点周围8格中的空位', 'info');
+            return false;
+        }
+
+        if (session.stage === 'destination') {
+            if (!this.isEtherealStepValidDestination(session.anchor, x, y)) {
+                this.showNotification('目标必须是锚点周围8格内的空位', 'warning');
+                return false;
+            }
+
+            session.source.x = x;
+            session.source.y = y;
+            session.source.hasMoved = true;
+            this.waitingForTarget = null;
+            this.selectedPiece = null;
+            this.showNotification('以太步生效（视为一步走棋）', 'success');
+            this.consumeMoveStep(1);
+            this.render();
+            this.ui?.renderRoundShop?.();
+            return true;
+        }
+
+        return false;
+    }
+
+    isEtherealStepValidDestination(anchor, x, y) {
+        if (!anchor) return false;
+        if (!this.board.isValidPosition(x, y)) return false;
+        if (this.board.getPieceAt(x, y)) return false;
+        const dx = Math.abs(x - anchor.x);
+        const dy = Math.abs(y - anchor.y);
+        return dx <= 1 && dy <= 1 && !(dx === 0 && dy === 0);
     }
 
     purchaseEffect(effectId) {

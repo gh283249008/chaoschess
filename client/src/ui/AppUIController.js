@@ -6,6 +6,10 @@ const SHOP_CATEGORIES = [
 const SHOP_ITEMS = [
     { id: 'intl_chess_global', category: 'chess', name: '国际象棋体系', desc: '本局己方棋子改为国际象棋并使用对应规则（含升变、王车易位）。', actionConsumesMove: false, price: 360, disabled: false },
     { id: 'flip_chess_pair', category: 'chess', name: '翻转棋 +2', desc: '购买后获得 2 枚翻转棋，可重复购买。落子或移动后若两端均为我方翻转棋，则中间连续敌子全部翻为我方。', actionConsumesMove: false, price: 280, disabled: false },
+    { id: 'gomoku_mode', category: 'chess', name: '五子棋模式', desc: '本局解锁五子连珠直接获胜；若触发三三/四四/长连禁手则立即判负。若仅本方购买，则本方失去提子能力（仍可被提子/吃子）。', actionConsumesMove: false, price: 300, disabled: false },
+    { id: 'skeleton_revival', category: 'special', name: '骷髅复苏', desc: '本局解锁骷髅复苏：在落子模式可选择“骷髅”，消耗 1 墓地在己方半场部署一只兵/卒。', actionConsumesMove: true, price: 260, disabled: false },
+    { id: 'ethereal_step', category: 'special', name: '以太步', desc: '本局解锁以太步：选择己方棋子，再选一个己方锚点棋子，将前者移动到锚点周围8格任一空位。不能吃子。', actionConsumesMove: true, price: 240, disabled: false },
+    { id: 'smoke_bomb', category: 'special', name: '烟雾弹', desc: '本局解锁烟雾弹：选择棋盘目标点，生成 3x3 烟雾区（效果与扑克同花烟雾弹一致）。', actionConsumesMove: true, price: 220, disabled: false },
     { id: 'chess_opening', category: 'chess', name: '布局强化', desc: '即将开放', actionConsumesMove: false, price: 180, disabled: true },
     { id: 'go_control', category: 'chess', name: '控盘强化', desc: '即将开放', actionConsumesMove: false, price: 200, disabled: true },
     { id: 'special_supply', category: 'special', name: '战术补给', desc: '即将开放', actionConsumesMove: false, price: 260, disabled: true },
@@ -77,7 +81,10 @@ export class AppUIController {
     }
 
     togglePlacePieceType() {
-        const nextType = this.app.placeModePieceType === 'flip' ? 'go' : 'flip';
+        const hasSkeletonRevival = this.app.matchController?.hasSkeletonRevival?.(this.app.currentPlayer);
+        const options = hasSkeletonRevival ? ['go', 'flip', 'skeleton'] : ['go', 'flip'];
+        const index = options.indexOf(this.app.placeModePieceType);
+        const nextType = options[(index + 1) % options.length] || 'go';
         this.app.setPlaceModePieceType(nextType);
     }
 
@@ -128,6 +135,9 @@ export class AppUIController {
         const flipChessStock = remoteSnapshot
             ? (roundState.loadouts[currentPlayer]?.flipChessStock || 0)
             : (loadout.flipChessStock || 0);
+        const graveyard = remoteSnapshot
+            ? (roundState.economies?.[currentPlayer]?.graveyard || 0)
+            : (economy?.graveyard || 0);
         const isBuying = remoteSnapshot ? roundState.status === 'buying' : this.app.matchController.isRoundBuying();
         const isFinished = !!matchState.winner;
         const phaseText = isBuying ? '购物时间' : '对局时间';
@@ -142,9 +152,11 @@ export class AppUIController {
         header.innerHTML = `
             <div>
                 <div style="font-size:16px; color:#1f2937; font-weight:700;">Round 前商店</div>
-                <div style="font-size:13px; color:#4b5563; margin-top:4px;">第 ${matchState.currentRound} 局 | 阶段：${phaseText}${countdownText} | 我的颜色 ${currentPlayer === 'red' ? '红方' : '黑方'} | 余额 ${economy?.credits ?? '-'} | 已购 ${purchasedCount}/3 | 翻转棋库存 ${flipChessStock} | 剩余走棋 ${remoteSnapshot ? (roundState.sharedState?.turnBudget?.[currentPlayer] ?? 1) : this.app.getCurrentTurnMovesLeft()}</div>
+                <div style="font-size:13px; color:#4b5563; margin-top:4px;">第 ${matchState.currentRound} 局 | 阶段：${phaseText}${countdownText} | 我的颜色 ${currentPlayer === 'red' ? '红方' : '黑方'} | 余额 ${economy?.credits ?? '-'} | 墓地 ${graveyard} | 已购 ${purchasedCount}/3 | 翻转棋库存 ${flipChessStock} | 剩余走棋 ${remoteSnapshot ? (roundState.sharedState?.turnBudget?.[currentPlayer] ?? 1) : this.app.getCurrentTurnMovesLeft()}</div>
             </div>
             <div style="display:flex; gap:8px;">
+                <button id="round-ethereal-step-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#7c3aed; color:#fff; cursor:pointer;">以太步</button>
+                <button id="round-smoke-bomb-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#0ea5a5; color:#fff; cursor:pointer;">烟雾弹</button>
                 <button id="round-begin-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:pointer;">开始本局</button>
                 <button id="round-next-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#374151; color:#fff; cursor:pointer;">下一局</button>
             </div>
@@ -217,10 +229,40 @@ export class AppUIController {
 
         const beginBtn = document.getElementById('round-begin-btn');
         const nextBtn = document.getElementById('round-next-btn');
+        const etherealStepBtn = document.getElementById('round-ethereal-step-btn');
+        const smokeBombBtn = document.getElementById('round-smoke-bomb-btn');
 
         if (remoteSnapshot) {
             beginBtn.style.display = 'none';
+            etherealStepBtn.style.display = 'none';
+            smokeBombBtn.style.display = 'none';
         }
+
+        const canUseEtherealStep = !remoteSnapshot
+            && this.app.matchController?.isRoundActive?.()
+            && this.app.matchController?.hasEtherealStep?.(currentPlayer)
+            && this.app.getCurrentTurnMovesLeft() > 0;
+        etherealStepBtn.disabled = !canUseEtherealStep;
+        if (etherealStepBtn.disabled) {
+            etherealStepBtn.style.opacity = '0.55';
+            etherealStepBtn.style.cursor = 'not-allowed';
+        }
+        etherealStepBtn.onclick = () => {
+            this.app.startEtherealStep();
+        };
+
+        const canUseSmokeBomb = !remoteSnapshot
+            && this.app.matchController?.isRoundActive?.()
+            && this.app.matchController?.hasSmokeBomb?.(currentPlayer)
+            && this.app.getCurrentTurnMovesLeft() > 0;
+        smokeBombBtn.disabled = !canUseSmokeBomb;
+        if (smokeBombBtn.disabled) {
+            smokeBombBtn.style.opacity = '0.55';
+            smokeBombBtn.style.cursor = 'not-allowed';
+        }
+        smokeBombBtn.onclick = () => {
+            this.app.startSmokeBomb();
+        };
 
         beginBtn.disabled = !isBuying || isFinished || !!remoteSnapshot;
         if (beginBtn.disabled) {
@@ -398,7 +440,10 @@ export class AppUIController {
 
         if (this.placePieceBtn) {
             this.placePieceBtn.style.display = gameMode === 'place' ? 'inline-block' : 'none';
-            this.placePieceBtn.textContent = this.app.placeModePieceType === 'flip' ? '落子：翻转棋' : '落子：围棋';
+            const pieceTypeText = this.app.placeModePieceType === 'flip'
+                ? '翻转棋'
+                : (this.app.placeModePieceType === 'skeleton' ? '骷髅' : '围棋');
+            this.placePieceBtn.textContent = `落子：${pieceTypeText}`;
         }
 
         if (gameMode === 'move') {
@@ -406,7 +451,10 @@ export class AppUIController {
             this.updateStatus('下棋模式 - 移动棋子');
         } else {
             this.modeBtn.textContent = '落子模式';
-            this.updateStatus(`落子模式 - 当前放置${this.app.placeModePieceType === 'flip' ? '翻转棋' : '围棋子'}`);
+            const pieceTypeText = this.app.placeModePieceType === 'flip'
+                ? '翻转棋'
+                : (this.app.placeModePieceType === 'skeleton' ? '骷髅（兵/卒）' : '围棋子');
+            this.updateStatus(`落子模式 - 当前放置${pieceTypeText}`);
         }
     }
 

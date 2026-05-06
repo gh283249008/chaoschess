@@ -128,32 +128,33 @@ export class PokerController {
     }
 
     executeImmediateEffect(effectResult) {
-        switch (effectResult.action) {
-            case 'undo':
-                this.app.showNotification('悔棋功能暂未实现', 'info');
-                break;
+        this.app.effectPipeline.execute(effectResult, result => {
+            switch (result.action) {
+                case 'undo':
+                    this.app.showNotification('悔棋功能暂未实现', 'info');
+                    break;
 
-            case 'extra_turns':
-                this.app.addTurnMoves(this.app.currentPlayer, effectResult.effect.extraTurns);
-                this.app.showNotification(`${effectResult.message}${this.getMoveDeclarationText(effectResult)}`, 'success');
-                break;
+                case 'extra_turns':
+                    this.app.showNotification(`${result.message}${this.getMoveDeclarationText(result)}`, 'success');
+                    break;
 
-            case 'block_river':
-                this.app.showNotification(`${effectResult.message}${this.getMoveDeclarationText(effectResult)}`, 'success');
-                this.app.board.riverBlocked = true;
-                this.app.riverBlockedTurns = 2;
-                this.app.render();
-                break;
+                case 'block_river':
+                    this.app.showNotification(`${result.message}${this.getMoveDeclarationText(result)}`, 'success');
+                    this.app.board.riverBlocked = true;
+                    this.app.riverBlockedTurns = 2;
+                    this.app.render();
+                    break;
 
-            case 'ban_go':
-                this.app.board.pieces = this.app.board.pieces.filter(p => p.pluginSource !== 'Go');
-                this.app.showNotification(`${effectResult.message}${this.getMoveDeclarationText(effectResult)}`, 'success');
-                this.app.render();
-                break;
+                case 'ban_go':
+                    this.app.board.pieces = this.app.board.pieces.filter(p => p.pluginSource !== 'Go');
+                    this.app.showNotification(`${result.message}${this.getMoveDeclarationText(result)}`, 'success');
+                    this.app.render();
+                    break;
 
-            default:
-                this.app.showNotification(`${effectResult.message || '效果已执行'}${this.getMoveDeclarationText(effectResult)}`, 'success');
-        }
+                default:
+                    this.app.showNotification(`${result.message || '效果已执行'}${this.getMoveDeclarationText(result)}`, 'success');
+            }
+        });
     }
 
     getMoveDeclarationText(effectResult) {
@@ -219,13 +220,17 @@ export class PokerController {
 
             case 'kill_piece':
                 this.app.board.removePiece(result.target);
+                this.app.onPieceCaptured(result.target, this.app.currentPlayer);
                 this.app.showKillFeed(`${this.playerMarker()}扑克`, `${this.pieceMarker(result.target)}${result.target.type}`, 'kill');
                 this.app.showNotification(result.message, 'success');
                 this.app.render();
                 break;
 
             case 'nuke_area':
-                result.targets.forEach(target => this.app.board.removePiece(target));
+                result.targets.forEach(target => {
+                    this.app.board.removePiece(target);
+                    this.app.onPieceCaptured(target, this.app.currentPlayer);
+                });
                 this.app.showNotification(result.message, 'success');
                 this.app.render();
                 break;

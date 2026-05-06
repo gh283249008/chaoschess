@@ -28,6 +28,9 @@ export class InputController {
 
         if (this.app.waitingForTarget) {
             const success = this.app.executeTargetEffect(gridX, gridY);
+            if (onlineState?.roomSnapshot && !this.app.applyingRemoteAction && success) {
+                this.app.sendStateSyncAction();
+            }
             if (success) {
                 this.app.render();
             }

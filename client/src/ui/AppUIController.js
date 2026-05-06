@@ -135,6 +135,12 @@ export class AppUIController {
         const flipChessStock = remoteSnapshot
             ? (roundState.loadouts[currentPlayer]?.flipChessStock || 0)
             : (loadout.flipChessStock || 0);
+        const etherealStepCharges = remoteSnapshot
+            ? (roundState.loadouts[currentPlayer]?.etherealStepCharges || 0)
+            : (loadout.etherealStepCharges || 0);
+        const smokeBombCharges = remoteSnapshot
+            ? (roundState.loadouts[currentPlayer]?.smokeBombCharges || 0)
+            : (loadout.smokeBombCharges || 0);
         const graveyard = remoteSnapshot
             ? (roundState.economies?.[currentPlayer]?.graveyard || 0)
             : (economy?.graveyard || 0);
@@ -152,7 +158,7 @@ export class AppUIController {
         header.innerHTML = `
             <div>
                 <div style="font-size:16px; color:#1f2937; font-weight:700;">Round 前商店</div>
-                <div style="font-size:13px; color:#4b5563; margin-top:4px;">第 ${matchState.currentRound} 局 | 阶段：${phaseText}${countdownText} | 我的颜色 ${currentPlayer === 'red' ? '红方' : '黑方'} | 余额 ${economy?.credits ?? '-'} | 墓地 ${graveyard} | 已购 ${purchasedCount}/3 | 翻转棋库存 ${flipChessStock} | 剩余走棋 ${remoteSnapshot ? (roundState.sharedState?.turnBudget?.[currentPlayer] ?? 1) : this.app.getCurrentTurnMovesLeft()}</div>
+                <div style="font-size:13px; color:#4b5563; margin-top:4px;">第 ${matchState.currentRound} 局 | 阶段：${phaseText}${countdownText} | 我的颜色 ${currentPlayer === 'red' ? '红方' : '黑方'} | 余额 ${economy?.credits ?? '-'} | 墓地 ${graveyard} | 已购 ${purchasedCount}/3 | 翻转棋库存 ${flipChessStock} | 以太步次数 ${etherealStepCharges} | 烟雾弹次数 ${smokeBombCharges} | 剩余走棋 ${remoteSnapshot ? (roundState.sharedState?.turnBudget?.[currentPlayer] ?? 1) : this.app.getCurrentTurnMovesLeft()}</div>
             </div>
             <div style="display:flex; gap:8px;">
                 <button id="round-ethereal-step-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#7c3aed; color:#fff; cursor:pointer;">以太步</button>

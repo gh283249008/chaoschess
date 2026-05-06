@@ -127,7 +127,16 @@ export class MatchController {
     }
 
     createEmptyLoadout() {
-        return { purchasedEffects: [], flipChessStock: 0, gomokuMode: false, skeletonRevival: false, etherealStep: false, smokeBomb: false };
+        return {
+            purchasedEffects: [],
+            flipChessStock: 0,
+            gomokuMode: false,
+            skeletonRevival: false,
+            etherealStep: false,
+            smokeBomb: false,
+            etherealStepCharges: 0,
+            smokeBombCharges: 0
+        };
     }
 
     applyRoundLoadoutEffects() {
@@ -208,9 +217,11 @@ export class MatchController {
         }
         if (effectId === 'ethereal_step') {
             loadout.etherealStep = true;
+            loadout.etherealStepCharges = 1;
         }
         if (effectId === 'smoke_bomb') {
             loadout.smokeBomb = true;
+            loadout.smokeBombCharges = 1;
         }
         if (this.app.ui && typeof this.app.ui.renderRoundShop === 'function') {
             this.app.ui.renderRoundShop();
@@ -354,6 +365,32 @@ export class MatchController {
 
     hasSmokeBomb(player) {
         return Boolean(this.roundState.loadouts[player]?.smokeBomb);
+    }
+
+    getEtherealStepCharges(player) {
+        return this.roundState.loadouts[player]?.etherealStepCharges || 0;
+    }
+
+    getSmokeBombCharges(player) {
+        return this.roundState.loadouts[player]?.smokeBombCharges || 0;
+    }
+
+    consumeEtherealStepCharge(player = this.app.currentPlayer) {
+        const loadout = this.roundState.loadouts[player];
+        if (!loadout || (loadout.etherealStepCharges || 0) <= 0) {
+            return false;
+        }
+        loadout.etherealStepCharges -= 1;
+        return true;
+    }
+
+    consumeSmokeBombCharge(player = this.app.currentPlayer) {
+        const loadout = this.roundState.loadouts[player];
+        if (!loadout || (loadout.smokeBombCharges || 0) <= 0) {
+            return false;
+        }
+        loadout.smokeBombCharges -= 1;
+        return true;
     }
 
     spendGraveyard(player = this.app.currentPlayer, amount = 1) {

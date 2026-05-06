@@ -46,7 +46,7 @@ export class Renderer {
     /**
      * 渲染当前本地游戏流程使用的棋盘状态。
      */
-    renderLocalGame({ board, gameMode, selectedPiece, currentPlayer, effectManager }) {
+    renderLocalGame({ board, gameMode, selectedPiece, currentPlayer, effectManager, waitingForTarget }) {
         this.clear();
         this.drawGrid();
         this.drawRiverLabels();
@@ -62,6 +62,48 @@ export class Renderer {
         });
 
         this.drawLocalSmokeEffects(board.smokeEffects, currentPlayer);
+        this.drawTargetHints(waitingForTarget, board);
+    }
+
+    drawTargetHints(waitingForTarget, board) {
+        if (!waitingForTarget) return;
+        if (waitingForTarget.type === 'ethereal_step' && waitingForTarget.stage === 'destination' && waitingForTarget.anchor) {
+            this.drawEtherealStepHints(waitingForTarget.anchor, board);
+        }
+        if (waitingForTarget.type === 'smoke_bomb') {
+            this.drawSmokeBombHintText();
+        }
+    }
+
+    drawEtherealStepHints(anchor, board) {
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const x = anchor.x + dx;
+                const y = anchor.y + dy;
+                if (x < 0 || x > 8 || y < 0 || y > 9) continue;
+                if (board?.getPieceAt?.(x, y)) continue;
+                const p = this.gridToScreen(x, y);
+                this.ctx.save();
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+                this.ctx.fillStyle = 'rgba(124, 58, 237, 0.35)';
+                this.ctx.fill();
+                this.ctx.strokeStyle = 'rgba(124, 58, 237, 0.9)';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+                this.ctx.restore();
+            }
+        }
+    }
+
+    drawSmokeBombHintText() {
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(14, 165, 165, 0.95)';
+        this.ctx.font = 'bold 16px Arial';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('烟雾弹：点击任意格作为3x3中心', 20, 24);
+        this.ctx.restore();
     }
 
     /**

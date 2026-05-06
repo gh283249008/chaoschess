@@ -318,6 +318,10 @@ class ChaosChessApp {
             this.showNotification('未购买烟雾弹，本局不可使用', 'warning');
             return false;
         }
+        if ((this.matchController.getSmokeBombCharges(this.currentPlayer) || 0) <= 0) {
+            this.showNotification('烟雾弹本局次数已用尽', 'warning');
+            return false;
+        }
         if (this.getCurrentTurnMovesLeft() <= 0) {
             this.showNotification('当前走棋次数已耗尽', 'warning');
             return false;
@@ -335,6 +339,10 @@ class ChaosChessApp {
             return false;
         }
 
+        if (!this.matchController.consumeSmokeBombCharge(this.currentPlayer)) {
+            this.showNotification('烟雾弹次数不足', 'warning');
+            return false;
+        }
         this.board.smokeEffects.push({
             x,
             y,
@@ -356,6 +364,10 @@ class ChaosChessApp {
         }
         if (!this.matchController?.hasEtherealStep(this.currentPlayer)) {
             this.showNotification('未购买以太步，本局不可使用', 'warning');
+            return false;
+        }
+        if ((this.matchController.getEtherealStepCharges(this.currentPlayer) || 0) <= 0) {
+            this.showNotification('以太步本局次数已用尽', 'warning');
             return false;
         }
         if (this.getCurrentTurnMovesLeft() <= 0) {
@@ -407,6 +419,10 @@ class ChaosChessApp {
         if (session.stage === 'destination') {
             if (!this.isEtherealStepValidDestination(session.anchor, x, y)) {
                 this.showNotification('目标必须是锚点周围8格内的空位', 'warning');
+                return false;
+            }
+            if (!this.matchController.consumeEtherealStepCharge(this.currentPlayer)) {
+                this.showNotification('以太步次数不足', 'warning');
                 return false;
             }
 
@@ -498,7 +514,8 @@ class ChaosChessApp {
                 gameMode: this.gameMode,
                 placeModePieceType: this.placeModePieceType,
                 riverBlockedTurns: this.riverBlockedTurns || 0,
-                turnBudget: { ...this.turnBudget }
+                turnBudget: { ...this.turnBudget },
+                waitingForTarget: this.waitingForTarget
             }
         });
     }
@@ -517,7 +534,7 @@ class ChaosChessApp {
                 black: sharedState.turnBudget?.black ?? this.turnBudget.black
             };
             this.selectedPiece = null;
-            this.waitingForTarget = null;
+            this.waitingForTarget = sharedState.waitingForTarget || null;
         } finally {
             this.applyingRemoteAction = false;
         }
@@ -579,7 +596,8 @@ class ChaosChessApp {
             selectedPiece: this.selectedPiece,
             currentPlayer: this.currentPlayer,
             effectManager: this.effectManager,
-            placeModePieceType: this.placeModePieceType
+            placeModePieceType: this.placeModePieceType,
+            waitingForTarget: this.waitingForTarget
         });
     }
 }

@@ -11,7 +11,9 @@
     "start:server": "npm --prefix server run start",
     "check:ws-a": "node scripts/ws_stability_a.js",
     "check:ws-b": "node scripts/ws_stability_b.js",
-    "check:ws-c": "node scripts/ws_stability_c.js"
+    "check:ws-c": "node scripts/ws_stability_c.js",
+    "check:replay": "node scripts/replay_cases.js",
+    "check:chaos-items": "node scripts/ws_chaos_items.js"
   },
   "devDependencies": {
     "vite": "^7.2.2"

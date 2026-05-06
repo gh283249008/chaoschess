@@ -13,7 +13,8 @@ export class OnlineController {
             color: null,
             roomSnapshot: null,
             rooms: [],
-            connectionPhase: 'connected'
+            connectionPhase: 'connected',
+            pendingAction: null
         };
         this.lastAppliedActionSeq = 0;
         this.lastAppliedRoomSeq = 0;
@@ -62,6 +63,7 @@ export class OnlineController {
             this.onlineState.roomId = msg.payload?.roomId || msg.roomId;
             this.onlineState.color = msg.payload?.color || null;
             this.onlineState.connectionPhase = 'connected';
+            this.onlineState.pendingAction = null;
             this.client.requestSnapshot();
             this.refreshUI();
         });
@@ -70,6 +72,7 @@ export class OnlineController {
             this.onlineState.roomId = msg.payload?.roomId || msg.roomId;
             this.onlineState.color = msg.payload?.color || null;
             this.onlineState.connectionPhase = 'connected';
+            this.onlineState.pendingAction = null;
             this.client.requestSnapshot();
             this.refreshUI();
         });
@@ -89,6 +92,7 @@ export class OnlineController {
             this.onlineState.color = null;
             this.onlineState.roomSnapshot = null;
             this.onlineState.connectionPhase = 'connected';
+            this.onlineState.pendingAction = null;
             this.lastAppliedRoomSeq = 0;
             this.client.clearSession();
             this.client.listRooms();
@@ -107,13 +111,15 @@ export class OnlineController {
             }
 
             const nextSeq = parsed.snapshot?.seq || 0;
-            if (nextSeq <= this.lastAppliedRoomSeq) {
+            const hasSnapshot = !!this.onlineState.roomSnapshot;
+            if (hasSnapshot && nextSeq <= this.lastAppliedRoomSeq) {
                 return;
             }
 
             const prevSnapshot = this.onlineState.roomSnapshot;
             this.lastAppliedRoomSeq = nextSeq;
             this.onlineState.roomSnapshot = parsed.snapshot || null;
+            this.onlineState.pendingAction = null;
             const turnColor = parsed.snapshot?.roundState?.turnColor;
             if (turnColor === 'red' || turnColor === 'black') {
                 this.app.currentPlayer = turnColor;
@@ -154,6 +160,7 @@ export class OnlineController {
 
         this.client.on('error', msg => {
             const parsed = Protocol.parseError(msg);
+            this.onlineState.pendingAction = null;
             if (parsed.code === ErrorCodes.SESSION_EXPIRED || parsed.code === ErrorCodes.ROOM_EXPIRED) {
                 this.onlineState.connectionPhase = 'expired';
                 this.onlineState.roomId = null;
@@ -176,17 +183,48 @@ export class OnlineController {
     }
 
     createRoom() {
-        if (!this.client) return;
+        if (!this.client) {
+            this.app.showNotification('联机客户端未初始化', 'warning');
+            return;
+        }
+        if (!this.onlineState.connected) {
+            this.app.showNotification('联机未连接，请稍后重试', 'warning');
+            return;
+        }
         if (this.onlineState.roomId) {
             this.refreshUI();
             return;
         }
-        this.client.createRoom();
+        this.onlineState.pendingAction = 'create_room';
+        const sent = this.client.createRoom();
+        if (!sent) {
+            this.onlineState.pendingAction = null;
+            this.app.showNotification('创建房间失败：网络未就绪', 'warning');
+        }
+        this.refreshUI();
     }
 
     joinRoom(roomId) {
-        if (!this.client || !roomId) return;
-        this.client.joinRoom(roomId.trim().toUpperCase());
+        if (!this.client) {
+            this.app.showNotification('联机客户端未初始化', 'warning');
+            return;
+        }
+        const normalized = (roomId || '').trim().toUpperCase();
+        if (!normalized) {
+            this.app.showNotification('请输入有效房间号', 'warning');
+            return;
+        }
+        if (!this.onlineState.connected) {
+            this.app.showNotification('联机未连接，请稍后重试', 'warning');
+            return;
+        }
+        this.onlineState.pendingAction = `join_room:${normalized}`;
+        const sent = this.client.joinRoom(normalized);
+        if (!sent) {
+            this.onlineState.pendingAction = null;
+            this.app.showNotification('加入房间失败：网络未就绪', 'warning');
+        }
+        this.refreshUI();
     }
 
     leaveRoom() {

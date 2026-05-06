@@ -76,7 +76,7 @@ export class InternationalChessPlugin extends PiecePlugin {
 
         switch (piece.type) {
             case 'King':
-                return this.validateKingMove(dx, dy);
+                return this.validateKingMove(piece, from, to, boardState);
 
             case 'Queen':
                 return this.validateQueenMove(from, to, boardState);
@@ -98,11 +98,84 @@ export class InternationalChessPlugin extends PiecePlugin {
         }
     }
 
+    explainInvalidMove(piece, from, to, boardState) {
+        if (!piece || piece.pluginSource !== 'InternationalChess') {
+            return '';
+        }
+
+        if (piece.type === 'King' && Math.abs(to.x - from.x) === 2 && from.y === to.y) {
+            return this.explainCastlingFailure(piece, from, to, boardState);
+        }
+
+        return `国际象棋规则不允许 ${piece.type} 这样移动`;
+    }
+
+    explainCastlingFailure(piece, from, to, boardState) {
+        if (piece.hasMoved) {
+            return '王车易位失败：王已经移动过';
+        }
+        if (from.y !== to.y || Math.abs(to.x - from.x) !== 2) {
+            return '王车易位失败：目标位置不符合王车易位规则';
+        }
+
+        const rookFromX = to.x > from.x ? 7 : 0;
+        const rook = this.getPieceAt(rookFromX, from.y, boardState);
+        if (!rook) {
+            return '王车易位失败：对应侧没有可用的车';
+        }
+        if (rook.player !== piece.player || rook.type !== 'Rook' || rook.pluginSource !== 'InternationalChess') {
+            return '王车易位失败：对应侧车不满足国际象棋条件';
+        }
+        if (rook.hasMoved) {
+            return '王车易位失败：车已经移动过';
+        }
+
+        const minX = Math.min(from.x, rookFromX);
+        const maxX = Math.max(from.x, rookFromX);
+        for (let x = minX + 1; x < maxX; x++) {
+            if (this.getPieceAt(x, from.y, boardState)) {
+                return '王车易位失败：王与车之间有棋子阻挡';
+            }
+        }
+
+        return '王车易位失败：当前局面不满足条件';
+    }
+
     /**
      * 王的移动：任意方向一格
      */
-    validateKingMove(dx, dy) {
-        return dx <= 1 && dy <= 1 && (dx + dy > 0);
+    validateKingMove(piece, from, to, boardState) {
+        const dx = Math.abs(to.x - from.x);
+        const dy = Math.abs(to.y - from.y);
+        if (dx <= 1 && dy <= 1 && (dx + dy > 0)) {
+            return true;
+        }
+        return this.validateCastlingMove(piece, from, to, boardState);
+    }
+
+    validateCastlingMove(piece, from, to, boardState) {
+        if (piece.type !== 'King') return false;
+        if (piece.hasMoved) return false;
+        if (from.y !== to.y) return false;
+        if (Math.abs(to.x - from.x) !== 2) return false;
+
+        const rookFromX = to.x > from.x ? 7 : 0;
+        const rook = this.getPieceAt(rookFromX, from.y, boardState);
+        if (!rook) return false;
+        if (rook.player !== piece.player || rook.type !== 'Rook' || rook.pluginSource !== 'InternationalChess') {
+            return false;
+        }
+        if (rook.hasMoved) return false;
+
+        const minX = Math.min(from.x, rookFromX);
+        const maxX = Math.max(from.x, rookFromX);
+        for (let x = minX + 1; x < maxX; x++) {
+            if (this.getPieceAt(x, from.y, boardState)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

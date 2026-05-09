@@ -37,17 +37,25 @@ const ONLINE_PHASE_TEXT = {
     expired: '会话过期，请重新加入'
 };
 
-import lobbyLogo from '../assets/lobby/lobby_logo.webp';
-import lobbyJoinButton from '../assets/lobby/btn_join_room_default.webp';
-import lobbyCreateButton from '../assets/lobby/btn_create_room_default.webp';
-import lobbyRulesButton from '../assets/lobby/btn_rules.webp';
-import lobbySettingsButton from '../assets/lobby/btn_settings.webp';
-import hallTitle from '../assets/hall/hall_title.webp';
-import hallRefreshButton from '../assets/hall/btn_refresh.webp';
-import hallCreateRoomButton from '../assets/hall/btn_create_room.webp';
-import hallQuickJoinButton from '../assets/hall/btn_quick_join.webp';
-import hallStatusPlaying from '../assets/hall/status_playing.webp';
-import hallStatusWaiting from '../assets/hall/status_waiting.webp';
+import lobbyLogo from '../assets/lobby-avif/lobby_logo.avif';
+import lobbyJoinButton from '../assets/lobby-avif/btn_join_room_default.avif';
+import lobbyCreateButton from '../assets/lobby-avif/btn_create_room_default.avif';
+import lobbyRulesButton from '../assets/lobby-avif/btn_rules.avif';
+import lobbySettingsButton from '../assets/lobby-avif/btn_settings.avif';
+import hallTitle from '../assets/hall-avif/hall_title.avif';
+import hallRefreshButton from '../assets/hall-avif/btn_refresh.avif';
+import hallCreateRoomButton from '../assets/hall-avif/btn_create_room.avif';
+import hallQuickJoinButton from '../assets/hall-avif/btn_quick_join.avif';
+import hallStatusPlaying from '../assets/hall-avif/status_playing.avif';
+import hallStatusWaiting from '../assets/hall-avif/status_waiting.avif';
+import hallBadgeHost from '../assets/hall-avif/badge_host.avif';
+import hallCopyRoomIcon from '../assets/hall-avif/icon_copy_room.avif';
+import hallStartGameButton from '../assets/hall-avif/btn_start_game.avif';
+import hallReadyButton from '../assets/hall-avif/btn_ready.avif';
+import hallLeaveRoomButton from '../assets/hall-avif/btn_leave_room.avif';
+import hallStatusReady from '../assets/hall-avif/status_ready.avif';
+import hallStatusUnready from '../assets/hall-avif/status_unready.avif';
+import hallAvatarDefault from '../assets/hall-avif/avatar_default.avif';
 
 export class AppUIController {
     constructor(app) {
@@ -376,9 +384,24 @@ export class AppUIController {
         const readyBtn = document.getElementById('online-ready-btn');
         const startBtn = document.getElementById('online-start-btn');
         const leaveBtn = document.getElementById('online-leave-btn');
+        const copyRoomBtn = document.getElementById('online-copy-room-btn');
         if (readyBtn) readyBtn.onclick = () => this.app.setOnlineReady(!selfReady);
         if (startBtn) startBtn.onclick = () => this.app.startOnlineMatch('BO3');
         if (leaveBtn) leaveBtn.onclick = () => this.app.leaveOnlineRoom();
+        if (copyRoomBtn) {
+            copyRoomBtn.onclick = async () => {
+                const text = state.roomId || '';
+                if (!text) return;
+                try {
+                    if (navigator?.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(text);
+                        this.app.showNotification('房间号已复制', 'success');
+                    }
+                } catch (error) {
+                    this.app.showNotification('复制失败，请手动复制', 'warning');
+                }
+            };
+        }
     }
 
     resolveView(state) {
@@ -549,18 +572,50 @@ export class AppUIController {
             const ready = !!snapshot.readyByPlayer?.[p.id];
             const onlineText = p.online ? '在线' : '离线重连中';
             const onlineColor = p.online ? '#166534' : '#b45309';
-            return `<div style="font-size:13px; color:#1f2937; margin-top:4px;">${p.color === 'red' ? '红方' : '黑方'} - ${p.token} - ${ready ? '已准备' : '未准备'} - <span style="color:${onlineColor};">${onlineText}</span></div>`;
+            return `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; padding:8px 10px; border:1px solid #e6ded2; border-radius:10px; background:rgb(251,245,236);">
+                    <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                        <img src="${hallAvatarDefault}" alt="默认头像" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:42px; height:42px; border-radius:999px;" />
+                        <div style="min-width:0;">
+                            <div style="font-size:13px; color:#1f2937; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.color === 'red' ? '红方' : '黑方'} · ${p.token}</div>
+                            <div style="font-size:11px; color:${onlineColor}; margin-top:2px;">${onlineText}</div>
+                        </div>
+                    </div>
+                    <div style="flex-shrink:0;">
+                        <img src="${ready ? hallStatusReady : hallStatusUnready}" alt="${ready ? '已准备' : '未准备'}" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:72px; height:auto;" />
+                    </div>
+                </div>
+            `;
         }).join('');
 
+        const copyRoomButtonDisabled = !state.roomId;
+
         return `
-            <div style="border:1px solid #d1d5db; border-radius:10px; padding:14px; background:#ffffff;">
-                <div style="font-size:18px; font-weight:700; color:#111827;">房间 ${state.roomId || '-'}</div>
+            <div style="padding:8px 10px 12px 10px; max-width:540px; margin:0 auto; width:min(94vw, 540px); background:transparent;">
+                <div style="display:flex; justify-content:center; margin-bottom:8px;">
+                    <img src="${lobbyLogo}" alt="房间页标题" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(78vw, 360px); height:auto;" />
+                </div>
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                    <div style="font-size:18px; font-weight:700; color:#111827;">房间 ${state.roomId || '-'}</div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        ${isHost ? `<img src="${hallBadgeHost}" alt="房主" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:72px; height:auto;" />` : ''}
+                        <button id="online-copy-room-btn" style="border:none; background:transparent; padding:0; cursor:${copyRoomButtonDisabled ? 'not-allowed' : 'pointer'}; opacity:${copyRoomButtonDisabled ? '0.55' : '1'};" ${copyRoomButtonDisabled ? 'disabled' : ''}>
+                            <img src="${hallCopyRoomIcon}" alt="复制房间号" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:86px; height:auto;" />
+                        </button>
+                    </div>
+                </div>
                 <div style="font-size:12px; color:#4b5563; margin-top:4px;">我的颜色: ${state.color || '-'} | 我的凭证: ${state.clientToken || '-'}</div>
                 <div style="margin-top:10px;">${playerRows}</div>
-                <div style="display:flex; gap:8px; margin-top:12px;">
-                    <button id="online-ready-btn" style="padding:8px 12px; border:none; border-radius:6px; background:${selfReady ? '#166534' : '#15803d'}; color:#fff; cursor:pointer;">${selfReady ? '取消准备' : '准备'}</button>
-                    <button id="online-start-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#1d4ed8; color:#fff; cursor:${isHost ? 'pointer' : 'not-allowed'}; opacity:${isHost ? '1' : '0.55'};" ${isHost ? '' : 'disabled'}>双方就绪后开始对局</button>
-                    <button id="online-leave-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#b91c1c; color:#fff; cursor:pointer;">离开房间</button>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; column-gap:8px; align-items:center; margin-top:12px; transform:translateX(-10px);">
+                    <button id="online-ready-btn" style="border:none; background:transparent; padding:0; cursor:pointer; justify-self:start;">
+                        <img src="${hallReadyButton}" alt="准备" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(28vw, 132px); height:auto; opacity:${selfReady ? '0.7' : '1'};" />
+                    </button>
+                    <button id="online-start-btn" style="border:none; background:transparent; padding:0; cursor:${isHost ? 'pointer' : 'not-allowed'}; opacity:${isHost ? '1' : '0.55'}; justify-self:center;" ${isHost ? '' : 'disabled'}>
+                        <img src="${hallStartGameButton}" alt="开始对局" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(34vw, 170px); height:auto;" />
+                    </button>
+                    <button id="online-leave-btn" style="border:none; background:transparent; padding:0; cursor:pointer; justify-self:end;">
+                        <img src="${hallLeaveRoomButton}" alt="离开房间" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(28vw, 132px); height:auto;" />
+                    </button>
                 </div>
             </div>
         `;

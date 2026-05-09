@@ -40,6 +40,8 @@ const ONLINE_PHASE_TEXT = {
 import lobbyLogo from '../assets/lobby/lobby_logo.webp';
 import lobbyJoinButton from '../assets/lobby/btn_join_room_default.webp';
 import lobbyCreateButton from '../assets/lobby/btn_create_room_default.webp';
+import lobbyRulesButton from '../assets/lobby/btn_rules.webp';
+import lobbySettingsButton from '../assets/lobby/btn_settings.webp';
 
 export class AppUIController {
     constructor(app) {
@@ -317,6 +319,8 @@ export class AppUIController {
 
         const createBtn = document.getElementById('online-create-btn');
         const joinBtn = document.getElementById('online-join-btn');
+        const helpBtn = document.getElementById('online-help-btn');
+        const settingsBtn = document.getElementById('online-settings-btn');
         const backToEntryBtn = document.getElementById('online-back-entry-btn');
         const refreshBtn = document.getElementById('online-refresh-btn');
         const roomInput = document.getElementById('online-room-input');
@@ -338,6 +342,18 @@ export class AppUIController {
         if (backToEntryBtn) {
             backToEntryBtn.onclick = () => {
                 this.lobbyStage = 'entry';
+                this.renderOnlinePanel(this.app.getOnlineState());
+            };
+        }
+        if (helpBtn) {
+            helpBtn.onclick = () => {
+                this.lobbyStage = 'help';
+                this.renderOnlinePanel(this.app.getOnlineState());
+            };
+        }
+        if (settingsBtn) {
+            settingsBtn.onclick = () => {
+                this.lobbyStage = 'settings';
                 this.renderOnlinePanel(this.app.getOnlineState());
             };
         }
@@ -417,6 +433,38 @@ export class AppUIController {
                     <button id="online-create-btn" style="display:block; width:min(60.75vw, 317px); margin:0 auto; border:none; background:transparent; padding:0; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>
                         <img src="${lobbyCreateButton}" alt="创建房间" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:100%; height:auto;" />
                     </button>
+                    <div style="display:flex; justify-content:space-between; align-items:center; width:min(60.75vw, 317px); margin:8px auto 0 auto;">
+                        <button id="online-help-btn" style="border:none; background:transparent; padding:0; cursor:pointer;">
+                            <img src="${lobbyRulesButton}" alt="规则" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(28vw, 140px); height:auto;" />
+                        </button>
+                        <button id="online-settings-btn" style="border:none; background:transparent; padding:0; cursor:pointer;">
+                            <img src="${lobbySettingsButton}" alt="设置" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(28vw, 140px); height:auto;" />
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        if (this.lobbyStage === 'help') {
+            return `
+                <div style="border:1px solid #d1d5db; border-radius:10px; padding:14px; background:#ffffff; max-width:540px; margin:0 auto;">
+                    <div style="font-size:18px; font-weight:700; color:#111827;">游戏帮助</div>
+                    <div style="font-size:13px; color:#6b7280; margin-top:8px;">（页面预留，内容待补充）</div>
+                    <div style="margin-top:12px;">
+                        <button id="online-back-entry-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#9ca3af; color:#fff; cursor:pointer;">返回</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        if (this.lobbyStage === 'settings') {
+            return `
+                <div style="border:1px solid #d1d5db; border-radius:10px; padding:14px; background:#ffffff; max-width:540px; margin:0 auto;">
+                    <div style="font-size:18px; font-weight:700; color:#111827;">设置</div>
+                    <div style="font-size:13px; color:#6b7280; margin-top:8px;">（页面预留，内容待补充）</div>
+                    <div style="margin-top:12px;">
+                        <button id="online-back-entry-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#9ca3af; color:#fff; cursor:pointer;">返回</button>
+                    </div>
                 </div>
             `;
         }

@@ -242,6 +242,11 @@ export class OnlineController {
         this.client.startMatch(mode);
     }
 
+    switchColor() {
+        if (!this.client) return;
+        this.client.switchColor();
+    }
+
     sendPlayerAction(action) {
         if (!this.client) return;
         this.client.sendGameAction(action);

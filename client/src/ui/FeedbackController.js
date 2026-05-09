@@ -5,12 +5,13 @@ export class FeedbackController {
         container.className = 'show';
 
         const colors = {
-            success: '#4CAF50',
-            warning: '#FF9800',
-            error: '#F44336',
-            info: '#2196F3'
+            success: '#4f8f65',
+            warning: '#b97a2f',
+            error: '#b74e4e',
+            info: '#5f7fb0'
         };
         container.style.borderColor = colors[type] || colors.info;
+        container.style.boxShadow = `0 10px 40px rgba(75, 63, 47, 0.2), 0 0 0 3px ${colors[type] || colors.info}33 inset`;
 
         setTimeout(() => {
             container.classList.remove('show');

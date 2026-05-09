@@ -143,6 +143,9 @@ export class GameServer {
             case 'reconnect':
                 this.handleReconnect(clientId, payload.roomId, payload.playerToken);
                 return;
+            case 'switch_color':
+                this.handleSwitchColor(clientId);
+                return;
             default:
                 this.sendError(clientId, ERROR_CODES.UNKNOWN_MESSAGE_TYPE, `未知消息类型: ${type}`);
         }
@@ -322,6 +325,36 @@ export class GameServer {
 
         room.nextSeq();
         this.pushRoomState(room.id, SYNC_REASONS.MATCH_STARTED);
+    }
+
+    handleSwitchColor(clientId) {
+        const room = this.getClientRoom(clientId);
+        if (!room) {
+            this.sendError(clientId, ERROR_CODES.NOT_IN_ROOM, '你不在房间内');
+            return;
+        }
+
+        const host = room.players[0];
+        if (!host || host.id !== clientId) {
+            this.sendError(clientId, ERROR_CODES.NOT_HOST, '仅房主可切换颜色');
+            return;
+        }
+
+        const result = room.switchHostColor(clientId);
+        if (!result.success) {
+            this.sendError(clientId, ERROR_CODES.INVALID_ACTION, result.reason);
+            return;
+        }
+
+        const redPlayer = room.players.find(p => p.color === 'red');
+        const blackPlayer = room.players.find(p => p.color === 'black');
+        const redClient = redPlayer ? this.clients.get(redPlayer.id) : null;
+        const blackClient = blackPlayer ? this.clients.get(blackPlayer.id) : null;
+        if (redClient) redClient.color = 'red';
+        if (blackClient) blackClient.color = 'black';
+
+        room.nextSeq();
+        this.pushRoomState(room.id, SYNC_REASONS.READY_CHANGED);
     }
 
     handlePlayerAction(clientId, action, clientActionId) {

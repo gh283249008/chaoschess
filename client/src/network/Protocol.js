@@ -15,7 +15,8 @@ export const MessageTypes = {
     STATE_SYNC: 'state_sync',
     STATE_SNAPSHOT: 'state_snapshot',
     RECONNECT: 'reconnect',
-    RECONNECTED: 'reconnected'
+    RECONNECTED: 'reconnected',
+    SWITCH_COLOR: 'switch_color'
 };
 
 export const ProtocolVersion = '1';
@@ -93,6 +94,10 @@ export class Protocol {
 
     static reconnect(roomId, playerToken) {
         return Protocol.wrap(MessageTypes.RECONNECT, { roomId, playerToken });
+    }
+
+    static switchColor() {
+        return Protocol.wrap(MessageTypes.SWITCH_COLOR);
     }
 
     static parseError(message) {

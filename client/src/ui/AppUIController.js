@@ -385,9 +385,13 @@ export class AppUIController {
         const startBtn = document.getElementById('online-start-btn');
         const leaveBtn = document.getElementById('online-leave-btn');
         const copyRoomBtn = document.getElementById('online-copy-room-btn');
+        const switchColorButtons = document.querySelectorAll('.online-switch-color-btn');
         if (readyBtn) readyBtn.onclick = () => this.app.setOnlineReady(!selfReady);
         if (startBtn) startBtn.onclick = () => this.app.startOnlineMatch('BO3');
         if (leaveBtn) leaveBtn.onclick = () => this.app.leaveOnlineRoom();
+        switchColorButtons.forEach(btn => {
+            btn.onclick = () => this.app.switchOnlineColor();
+        });
         if (copyRoomBtn) {
             copyRoomBtn.onclick = async () => {
                 const text = state.roomId || '';
@@ -572,19 +576,20 @@ export class AppUIController {
             const ready = !!snapshot.readyByPlayer?.[p.id];
             const onlineText = p.online ? '在线' : '离线重连中';
             const onlineColor = p.online ? '#166534' : '#b45309';
+            const canSwitchColor = isHost && p.id === state.clientId;
             return `
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; padding:8px 10px; border:1px solid #e6ded2; border-radius:10px; background:rgb(251,245,236);">
+                <button class="online-switch-color-btn" ${canSwitchColor ? '' : 'disabled'} style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; padding:8px 10px; border:1px solid #e6ded2; border-radius:10px; background:rgb(251,245,236); width:100%; text-align:left; ${canSwitchColor ? 'cursor:pointer;' : 'cursor:default; opacity:0.9;'}">
                     <div style="display:flex; align-items:center; gap:8px; min-width:0;">
                         <img src="${hallAvatarDefault}" alt="默认头像" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:42px; height:42px; border-radius:999px;" />
                         <div style="min-width:0;">
                             <div style="font-size:13px; color:#1f2937; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.color === 'red' ? '红方' : '黑方'} · ${p.token}</div>
-                            <div style="font-size:11px; color:${onlineColor}; margin-top:2px;">${onlineText}</div>
+                            <div style="font-size:11px; color:${onlineColor}; margin-top:2px;">${onlineText}${canSwitchColor ? ' · 点击切换红黑方' : ''}</div>
                         </div>
                     </div>
                     <div style="flex-shrink:0;">
                         <img src="${ready ? hallStatusReady : hallStatusUnready}" alt="${ready ? '已准备' : '未准备'}" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:72px; height:auto;" />
                     </div>
-                </div>
+                </button>
             `;
         }).join('');
 

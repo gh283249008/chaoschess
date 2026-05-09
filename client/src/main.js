@@ -569,6 +569,10 @@ class ChaosChessApp {
         this.onlineController.leaveRoom();
     }
 
+    switchOnlineColor() {
+        this.onlineController.switchColor();
+    }
+
     setOnlineReady(ready) {
         this.onlineController.setReady(ready);
     }

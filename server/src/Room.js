@@ -338,6 +338,28 @@ export class Room {
         return { success: true, color: player.color, prevClientId };
     }
 
+    switchHostColor(hostId) {
+        if (this.players.length < 2) {
+            return { success: false, reason: '需要两名玩家才能切换颜色' };
+        }
+        if (!this.players[0] || this.players[0].id !== hostId) {
+            return { success: false, reason: '仅房主可切换颜色' };
+        }
+        if (this.status !== 'ready_check' && this.status !== 'waiting') {
+            return { success: false, reason: '仅准备阶段可切换颜色' };
+        }
+
+        const [first, second] = this.players;
+        const swapped = [
+            { ...second, color: 'red' },
+            { ...first, color: 'black' }
+        ];
+        this.players = swapped;
+        this.readyByPlayer = Object.fromEntries(this.players.map(p => [p.id, false]));
+        this.lastActiveAt = Date.now();
+        return { success: true };
+    }
+
     hasOnlinePlayers() {
         return this.players.some(p => p.online);
     }

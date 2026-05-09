@@ -276,6 +276,10 @@ export class NetworkClient {
         return this.send(Protocol.reconnect(this.session.roomId, this.session.playerToken));
     }
 
+    switchColor() {
+        return this.send(Protocol.switchColor());
+    }
+
     /**
      * 断开连接
      */

@@ -23,6 +23,32 @@ export class NetworkClient {
             roomId: null,
             playerToken: null
         };
+        this.loadSession();
+    }
+
+    loadSession() {
+        try {
+            const raw = localStorage.getItem('chaoschess:session');
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                this.session.roomId = parsed.roomId || null;
+                this.session.playerToken = parsed.playerToken || null;
+                if (this.session.playerToken) {
+                    this.playerToken = this.session.playerToken;
+                }
+            }
+        } catch {
+            // ignore invalid cache
+        }
+    }
+
+    persistSession() {
+        try {
+            localStorage.setItem('chaoschess:session', JSON.stringify(this.session));
+        } catch {
+            // ignore storage errors
+        }
     }
 
     /**
@@ -77,14 +103,18 @@ export class NetworkClient {
             switch (message.type) {
                 case 'connected':
                     this.clientId = message.payload?.clientId || null;
-                    this.playerToken = message.payload?.playerToken || this.playerToken;
-                    this.session.playerToken = this.playerToken;
+                    if (!this.session.playerToken) {
+                        this.playerToken = message.payload?.playerToken || this.playerToken;
+                        this.session.playerToken = this.playerToken;
+                        this.persistSession();
+                    }
                     break;
 
                 case 'room_created':
                 case 'room_joined':
                     this.roomId = message.payload?.roomId || null;
                     this.session.roomId = this.roomId;
+                    this.persistSession();
                     break;
 
                 case 'reconnected':
@@ -92,11 +122,13 @@ export class NetworkClient {
                     this.session.roomId = this.roomId;
                     this.playerToken = message.payload?.playerToken || this.playerToken;
                     this.session.playerToken = this.playerToken;
+                    this.persistSession();
                     break;
 
                 case 'room_left':
                     this.roomId = null;
                     this.session.roomId = null;
+                    this.persistSession();
                     break;
             }
 
@@ -259,5 +291,6 @@ export class NetworkClient {
     clearSession() {
         this.session.roomId = null;
         this.session.playerToken = this.playerToken;
+        this.persistSession();
     }
 }

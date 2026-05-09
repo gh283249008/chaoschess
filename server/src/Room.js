@@ -81,7 +81,7 @@ export class Room {
             this.finishedAt = Date.now();
         } else {
             this.status = 'waiting';
-            this.players = this.players.map((p, index) => ({ ...p, color: PLAYER_COLORS[index], online: true, disconnectedAt: null }));
+            this.players = this.players.map((p, index) => ({ ...p, color: PLAYER_COLORS[index] }));
             this.readyByPlayer = Object.fromEntries(this.players.map(p => [p.id, false]));
             this.lastActiveAt = Date.now();
         }

@@ -37,7 +37,7 @@ export class OnlineController {
     bindHandlers() {
         this.client.on('connected', msg => {
             this.onlineState.clientId = msg.payload?.clientId || msg.clientId;
-            this.onlineState.clientToken = msg.payload?.playerToken || null;
+            this.onlineState.clientToken = this.client?.session?.playerToken || msg.payload?.playerToken || null;
             this.onlineState.connected = true;
             this.refreshUI();
         });

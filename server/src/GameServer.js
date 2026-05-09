@@ -36,7 +36,7 @@ const ACTION_MATRIX = {
 };
 
 const DISCONNECT_GRACE_MS = 30000;
-const EMPTY_ROOM_EXPIRE_MS = 10 * 60 * 1000;
+const EMPTY_ROOM_EXPIRE_MS = 30 * 1000;
 const MATCH_END_EXPIRE_MS = 5 * 60 * 1000;
 
 export class GameServer {
@@ -468,7 +468,7 @@ export class GameServer {
 
     handleListRooms(clientId) {
         const roomList = [...this.rooms.values()]
-            .filter(room => room.status !== 'finished')
+            .filter(room => room.status !== 'finished' && room.hasOnlinePlayers())
             .map(room => room.getInfo());
 
         this.sendToClient(clientId, {
@@ -544,7 +544,9 @@ export class GameServer {
     shouldExpireRoom(room, now) {
         if (!room.hasOnlinePlayers()) {
             const idleSince = room.lastActiveAt || room.createdAt;
-            if (now - idleSince >= EMPTY_ROOM_EXPIRE_MS) {
+            const elapsed = now - idleSince;
+            const threshold = Math.min(EMPTY_ROOM_EXPIRE_MS, DISCONNECT_GRACE_MS);
+            if (elapsed >= threshold) {
                 return true;
             }
         }

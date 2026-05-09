@@ -119,7 +119,6 @@ class ChaosChessApp {
         const wsUrl = `${protocol}://${window.location.host}/ws`;
         try {
             await this.onlineController.connect(wsUrl);
-            this.showNotification('联机服务已连接', 'success');
         } catch (error) {
             console.error('Failed to connect online server:', error);
             this.showNotification('联机服务连接失败，请确认 server 已启动', 'warning');

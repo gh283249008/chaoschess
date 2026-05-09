@@ -37,6 +37,10 @@ const ONLINE_PHASE_TEXT = {
     expired: '会话过期，请重新加入'
 };
 
+import lobbyLogo from '../assets/lobby/lobby_logo.webp';
+import lobbyJoinButton from '../assets/lobby/btn_join_room_default.webp';
+import lobbyCreateButton from '../assets/lobby/btn_create_room_default.webp';
+
 export class AppUIController {
     constructor(app) {
         this.app = app;
@@ -44,6 +48,7 @@ export class AppUIController {
         this.placePieceBtn = null;
         this.currentView = 'lobby';
         this.countdownTicker = null;
+        this.lobbyStage = 'entry';
     }
 
     resolveOnlineErrorMessage(code, fallbackMessage) {
@@ -312,10 +317,30 @@ export class AppUIController {
 
         const createBtn = document.getElementById('online-create-btn');
         const joinBtn = document.getElementById('online-join-btn');
+        const backToEntryBtn = document.getElementById('online-back-entry-btn');
         const refreshBtn = document.getElementById('online-refresh-btn');
         const roomInput = document.getElementById('online-room-input');
-        if (createBtn) createBtn.onclick = () => this.app.createOnlineRoom();
-        if (joinBtn) joinBtn.onclick = () => this.app.joinOnlineRoom(roomInput.value || '');
+        if (createBtn) {
+            createBtn.onclick = () => {
+                this.app.createOnlineRoom();
+            };
+        }
+        if (joinBtn) {
+            joinBtn.onclick = () => {
+                if (this.lobbyStage === 'entry') {
+                    this.lobbyStage = 'hall';
+                    this.renderOnlinePanel(this.app.getOnlineState());
+                    return;
+                }
+                this.app.joinOnlineRoom(roomInput?.value || '');
+            };
+        }
+        if (backToEntryBtn) {
+            backToEntryBtn.onclick = () => {
+                this.lobbyStage = 'entry';
+                this.renderOnlinePanel(this.app.getOnlineState());
+            };
+        }
         if (refreshBtn) refreshBtn.onclick = () => this.app.refreshOnlineRooms();
 
         const quickJoinButtons = document.querySelectorAll('.online-quick-join-btn');
@@ -379,15 +404,32 @@ export class AppUIController {
                 </div>
             `).join('');
 
+        if (this.lobbyStage === 'entry') {
+            return `
+                <div style="position:relative; background:rgb(253,248,240); border-radius:0; padding:18px 14px; max-width:540px; margin:0 auto; text-align:center; transform:translateY(-100px);">
+                    <div style="position:absolute; top:8px; right:10px; font-size:11px; padding:4px 8px; border-radius:999px; background:rgba(255,255,255,0.75); color:${state.connectionPhase === 'reconnecting' ? '#b45309' : (state.connected ? '#166534' : '#991b1b')}; border:1px solid rgba(0,0,0,0.08);">
+                        ${phaseText}
+                    </div>
+                    <img src="${lobbyLogo}" alt="Lobby Logo" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(90vw, 470px); height:auto; margin:0 auto 10px auto;" />
+                    <button id="online-join-btn" style="display:block; width:min(60.75vw, 317px); margin:0 auto 10px auto; border:none; background:transparent; padding:0; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>
+                        <img src="${lobbyJoinButton}" alt="加入房间" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:100%; height:auto;" />
+                    </button>
+                    <button id="online-create-btn" style="display:block; width:min(60.75vw, 317px); margin:0 auto; border:none; background:transparent; padding:0; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>
+                        <img src="${lobbyCreateButton}" alt="创建房间" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:100%; height:auto;" />
+                    </button>
+                </div>
+            `;
+        }
+
         return `
             <div style="border:1px solid #d1d5db; border-radius:10px; padding:14px; background:#ffffff;">
-                <div style="font-size:18px; font-weight:700; color:#111827;">大厅</div>
+                <div style="font-size:18px; font-weight:700; color:#111827;">房间大厅</div>
                 <div style="font-size:12px; color:${state.connectionPhase === 'reconnecting' ? '#b45309' : (state.connected ? '#166534' : '#991b1b')}; margin-top:4px;">${phaseText}</div>
                 <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-                    <button id="online-create-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#0f766e; color:#fff; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>创建房间</button>
-                    <input id="online-room-input" placeholder="输入房间号" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:6px;" />
+                    <input id="online-room-input" placeholder="输入房间号" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:6px; flex:1; min-width:180px;" />
                     <button id="online-join-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>加入房间</button>
                     <button id="online-refresh-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#374151; color:#fff; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>刷新列表</button>
+                    <button id="online-back-entry-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#9ca3af; color:#fff; cursor:pointer;">返回</button>
                 </div>
                 <div style="margin-top:12px; border-top:1px solid #e5e7eb; padding-top:8px;">
                     <div style="font-size:13px; font-weight:600; color:#111827;">公共大厅房间</div>

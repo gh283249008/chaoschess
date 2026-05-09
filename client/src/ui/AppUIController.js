@@ -42,6 +42,12 @@ import lobbyJoinButton from '../assets/lobby/btn_join_room_default.webp';
 import lobbyCreateButton from '../assets/lobby/btn_create_room_default.webp';
 import lobbyRulesButton from '../assets/lobby/btn_rules.webp';
 import lobbySettingsButton from '../assets/lobby/btn_settings.webp';
+import hallTitle from '../assets/hall/hall_title.webp';
+import hallRefreshButton from '../assets/hall/btn_refresh.webp';
+import hallCreateRoomButton from '../assets/hall/btn_create_room.webp';
+import hallQuickJoinButton from '../assets/hall/btn_quick_join.webp';
+import hallStatusPlaying from '../assets/hall/status_playing.webp';
+import hallStatusWaiting from '../assets/hall/status_waiting.webp';
 
 export class AppUIController {
     constructor(app) {
@@ -411,6 +417,7 @@ export class AppUIController {
         const rooms = state.rooms || [];
         const isPending = !!state.pendingAction;
         const phaseText = ONLINE_PHASE_TEXT[state.connectionPhase] || (state.connected ? '联机已连接' : '联机未连接');
+        const shouldScrollRoomList = rooms.length >= 5;
         const roomRows = rooms.length === 0
             ? '<div style="color:#6b7280; font-size:13px;">暂无可加入房间</div>'
             : rooms.map(r => `
@@ -469,19 +476,66 @@ export class AppUIController {
             `;
         }
 
+        const themedRows = rooms.length === 0
+            ? '<div style="color:#6b7280; font-size:13px; text-align:center; padding:10px 0;">暂无可加入房间</div>'
+            : rooms.map((r, idx) => {
+                const token = ['♠', '♥', '♦', '♣'][idx % 4];
+                const statusText = r.status === 'playing' ? '对局中' : '准备中';
+                const statusBg = r.status === 'playing' ? '#fee2e2' : '#e0f2fe';
+                const statusColor = r.status === 'playing' ? '#991b1b' : '#0c4a6e';
+                const statusIcon = r.status === 'playing'
+                    ? `<img src="${hallStatusPlaying}" alt="对局中" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:72px; height:auto;" />`
+                    : `<img src="${hallStatusWaiting}" alt="准备中" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:72px; height:auto;" />`;
+                return `
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px 10px; border:1px solid #e8dccb; border-radius:10px; margin-top:8px; background:rgb(251,245,236); min-height:68px;">
+                        <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                            <span style="font-size:18px; line-height:1;">${token}</span>
+                            <div style="min-width:0;">
+                                <div style="font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.id}</div>
+                                <div style="font-size:12px; color:#6b7280;">👥 ${r.playerCount}/2人</div>
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                            ${statusIcon || `<span style="font-size:11px; padding:3px 7px; border-radius:999px; background:${statusBg}; color:${statusColor};">${statusText}</span>`}
+                            <button class="online-quick-join-btn" data-room-id="${r.id}" style="border:none; background:transparent; padding:0; cursor:pointer;">
+                                <img src="${hallQuickJoinButton}" alt="快速加入" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:67px; height:auto;" />
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
         return `
-            <div style="border:1px solid #d1d5db; border-radius:10px; padding:14px; background:#ffffff;">
-                <div style="font-size:18px; font-weight:700; color:#111827;">房间大厅</div>
-                <div style="font-size:12px; color:${state.connectionPhase === 'reconnecting' ? '#b45309' : (state.connected ? '#166534' : '#991b1b')}; margin-top:4px;">${phaseText}</div>
-                <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-                    <input id="online-room-input" placeholder="输入房间号" style="padding:8px 10px; border:1px solid #d1d5db; border-radius:6px; flex:1; min-width:180px;" />
-                    <button id="online-join-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>加入房间</button>
-                    <button id="online-refresh-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#374151; color:#fff; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>刷新列表</button>
-                    <button id="online-back-entry-btn" style="padding:8px 12px; border:none; border-radius:6px; background:#9ca3af; color:#fff; cursor:pointer;">返回</button>
+            <div style="max-width:540px; margin:0 auto; background:rgb(253,248,240); padding:8px 10px 12px 10px; border-radius:12px; transform:translateY(-20px);">
+                <div style="display:flex; justify-content:center; margin:2px 0 8px 0;">
+                    <img src="${hallTitle}" alt="联机大厅" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(86vw, 420px); height:auto;" />
                 </div>
-                <div style="margin-top:12px; border-top:1px solid #e5e7eb; padding-top:8px;">
-                    <div style="font-size:13px; font-weight:600; color:#111827;">公共大厅房间</div>
-                    ${roomRows}
+
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border:1px solid #eadfd1; border-radius:10px; background:#fffaf6;">
+                    <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#374151;">
+                        <span style="display:inline-block; width:8px; height:8px; border-radius:999px; background:${state.connected ? '#16a34a' : '#dc2626'};"></span>
+                        <span>${phaseText}</span>
+                    </div>
+                    <button id="online-back-entry-btn" style="padding:6px 10px; border:none; border-radius:8px; background:#9ca3af; color:#fff; font-size:12px; cursor:pointer;">返回</button>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:8px; margin-top:10px; padding:10px; border:1px solid #eadfd1; border-radius:10px; background:#fff;">
+                    <span style="font-size:18px; line-height:1;">♜</span>
+                    <input id="online-room-input" placeholder="输入房间号" style="flex:1; min-width:120px; border:none; outline:none; font-size:14px; background:transparent;" />
+                    <button id="online-join-btn" style="padding:8px 12px; border:none; border-radius:8px; background:#2563eb; color:#fff; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'}; font-size:12px;" ${isPending ? 'disabled' : ''}>加入房间</button>
+                </div>
+
+                <div style="margin-top:10px; max-height:${shouldScrollRoomList ? '300px' : 'none'}; overflow:${shouldScrollRoomList ? 'auto' : 'visible'}; border:1px solid #eadfd1; border-radius:10px; padding:8px; background:#fffaf6;">
+                    ${themedRows}
+                </div>
+
+                <div style="display:flex; gap:8px; margin-top:10px; justify-content:space-between;">
+                    <button id="online-create-btn" style="border:none; background:transparent; padding:0; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>
+                        <img src="${hallCreateRoomButton}" alt="创建房间" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(43vw, 210px); height:auto;" />
+                    </button>
+                    <button id="online-refresh-btn" style="border:none; background:transparent; padding:0; cursor:${isPending ? 'not-allowed' : 'pointer'}; opacity:${isPending ? '0.6' : '1'};" ${isPending ? 'disabled' : ''}>
+                        <img src="${hallRefreshButton}" alt="刷新列表" loading="eager" decoding="async" fetchpriority="high" style="display:block; width:min(43vw, 210px); height:auto;" />
+                    </button>
                 </div>
             </div>
         `;

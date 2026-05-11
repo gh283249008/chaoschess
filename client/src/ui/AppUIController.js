@@ -378,7 +378,7 @@ export class AppUIController {
 
             const effectId = effectEntry.effectId;
             const item = getItemByEffectId(effectId);
-            const isActiveItem = effectId === 'ethereal_step' || effectId === 'smoke_bomb' || effectId === 'flip_chess_pair' || effectId === 'skeleton_revival';
+                const isActiveItem = effectId === 'ethereal_step' || effectId === 'smoke_bomb' || effectId === 'flip_chess_pair' || effectId === 'skeleton_revival' || effectId === 'dragon_wrath';
             const desc = `${item?.desc || effectId}${this.getMoveDeclarationText(item?.actionConsumesMove ?? false)}`;
 
             let charges = 0;

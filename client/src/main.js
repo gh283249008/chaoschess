@@ -674,8 +674,7 @@ class ChaosChessApp {
             this.showNotification('未购买守护巨龙之怒，本局不可使用', 'warning');
             return false;
         }
-        // 使用不消耗走棋次数，即使当前次数为0也可以使用
-        // 增加一次额外的走棋次数
+        // 使用不消耗走棋次数，也不视为一次走棋，直接增加额外次数
         this.addTurnMoves(this.currentPlayer, 1);
         this.showNotification('守护巨龙之怒已生效（+1 走棋次数）', 'success');
         this.render();

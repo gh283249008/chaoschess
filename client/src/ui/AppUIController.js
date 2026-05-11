@@ -10,7 +10,7 @@ const SHOP_ITEMS = [
     { id: 'skeleton_revival', category: 'special', name: '骷髅复苏', desc: '本局解锁骷髅复苏：在落子模式可选择“骷髅”，消耗 1 墓地在己方半场部署一枚骷髅棋。', actionConsumesMove: true, price: 260, disabled: false },
     { id: 'ethereal_step', category: 'special', name: '以太步', desc: '本局解锁以太步：选择己方棋子，再选一个己方锚点棋子，将前者移动到锚点周围8格任一空位。不能吃子。', actionConsumesMove: true, price: 240, disabled: false },
     { id: 'smoke_bomb', category: 'special', name: '烟雾弹', desc: '本局解锁烟雾弹：选择棋盘目标点，生成 3x3 烟雾区（效果与扑克同花烟雾弹一致）。', actionConsumesMove: true, price: 220, disabled: false },
-    { id: 'dragon_wrath', category: 'special', name: '守护巨龙之怒', desc: '整场 BO3/BO5 每方仅可购买 1 次。使用后增加一次额外的走棋次数。', actionConsumesMove: true, price: 400, disabled: false },
+    { id: 'dragon_wrath', category: 'special', name: '守护巨龙之怒', desc: '整场 BO3/BO5 每方仅可购买 1 次。使用后增加一次额外的走棋次数。', actionConsumesMove: false, price: 400, disabled: false },
     
 ];
 

@@ -18,7 +18,8 @@ const config = {
         { "type": "帅", "name": "General", "player": "red" },
         { "type": "将", "name": "General", "player": "black" },
         { "type": "兵", "name": "Pawn", "player": "red" },
-        { "type": "卒", "name": "Pawn", "player": "black" }
+        { "type": "卒", "name": "Pawn", "player": "black" },
+        { "type": "骷", "name": "SkeletonPawn", "player": "both" }
     ],
     "initialSetup": {
         "red": [
@@ -175,6 +176,7 @@ export class ChineseChessPlugin extends PiecePlugin {
 
             case '兵':
             case '卒': // Pawn - 向前，过河可横移
+            case '骷': // Skeleton - 使用兵卒移动规则
                 isValid = this.validatePawnMove(piece, from, to, dx, dy);
                 break;
 

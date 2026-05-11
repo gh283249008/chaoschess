@@ -30,8 +30,8 @@ export class InternationalChessPlugin extends PiecePlugin {
      */
     validateMove(piece, from, to, boardState) {
         // 获取棋盘边界（默认为中国棋盘大小 9x10，国际象棋是 8x8，这里为了兼容性使用更大的默认值）
-        const maxX = (boardState.width !== undefined && boardState.width !== null) ? boardState.width - 1 : 7; // 0-7 for 8 columns
-        const maxY = (boardState.height !== undefined && boardState.height !== null) ? boardState.height - 1 : 7; // 0-7 for 8 rows
+        const maxX = (boardState.width !== undefined && boardState.width !== null) ? boardState.width : 8;
+        const maxY = (boardState.height !== undefined && boardState.height !== null) ? boardState.height : 9;
 
         // 基础验证：目标位置是否在棋盘内
         if (to.x < 0 || to.x > maxX || to.y < 0 || to.y > maxY) {
@@ -118,7 +118,8 @@ export class InternationalChessPlugin extends PiecePlugin {
             return '王车易位失败：目标位置不符合王车易位规则';
         }
 
-        const rookFromX = to.x > from.x ? 7 : 0;
+        const rightRookX = (boardState.width !== undefined && boardState.width !== null) ? boardState.width : 8;
+        const rookFromX = to.x > from.x ? rightRookX : 0;
         const rook = this.getPieceAt(rookFromX, from.y, boardState);
         if (!rook) {
             return '王车易位失败：对应侧没有可用的车';
@@ -159,7 +160,8 @@ export class InternationalChessPlugin extends PiecePlugin {
         if (from.y !== to.y) return false;
         if (Math.abs(to.x - from.x) !== 2) return false;
 
-        const rookFromX = to.x > from.x ? 7 : 0;
+        const rightRookX = (boardState.width !== undefined && boardState.width !== null) ? boardState.width : 8;
+        const rookFromX = to.x > from.x ? rightRookX : 0;
         const rook = this.getPieceAt(rookFromX, from.y, boardState);
         if (!rook) return false;
         if (rook.player !== piece.player || rook.type !== 'Rook' || rook.pluginSource !== 'InternationalChess') {
@@ -289,7 +291,9 @@ export class InternationalChessPlugin extends PiecePlugin {
             if (dy === direction) return true;
 
             // 首次移动可以走两格
-            const startRow = piece.player === 'red' ? 6 : 1;
+            const startRow = (typeof piece.intlStartRow === 'number')
+                ? piece.intlStartRow
+                : (piece.player === 'red' ? 6 : 1);
             if (from.y === startRow && dy === 2 * direction) {
                 const midY = from.y + direction;
                 const blocked = gameState.pieces.find(p => p.x === from.x && p.y === midY);

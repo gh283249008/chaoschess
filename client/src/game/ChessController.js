@@ -35,6 +35,11 @@ export class ChessController {
             return false;
         }
 
+        if (clickedPiece.pluginSource === 'FlipChess') {
+            this.app.showNotification('翻转棋不可移动，请在落子模式放置翻转棋形成夹击', 'info');
+            return true;
+        }
+
         const result = this.app.effectManager.canPieceMove(clickedPiece);
         if (!result.canMove) {
             this.app.showNotification(result.reason, 'warning');
@@ -71,8 +76,8 @@ export class ChessController {
         }
 
         if (piece.pluginSource === 'FlipChess') {
-            const plugin = this.app.pluginManager.getPlugin('pieces', 'FlipChess');
-            return plugin ? plugin.validateMove(piece, from, to, boardState) : false;
+            this.lastInvalidMoveReason = '翻转棋不可移动，只能通过落子模式部署';
+            return false;
         }
 
         return false;

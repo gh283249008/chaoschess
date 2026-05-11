@@ -7,13 +7,10 @@ const SHOP_ITEMS = [
     { id: 'intl_chess_global', category: 'chess', name: '国际象棋体系', desc: '本局己方棋子改为国际象棋并使用对应规则（含升变、王车易位）。', actionConsumesMove: false, price: 360, disabled: false },
     { id: 'flip_chess_pair', category: 'chess', name: '翻转棋 +2', desc: '购买后获得 2 枚翻转棋，可重复购买。落子或移动后若两端均为我方翻转棋，则中间连续敌子全部翻为我方。', actionConsumesMove: false, price: 280, disabled: false },
     { id: 'gomoku_mode', category: 'chess', name: '五子棋模式', desc: '本局解锁五子连珠直接获胜；若触发三三/四四/长连禁手则立即判负。若仅本方购买，则本方失去提子能力（仍可被提子/吃子）。', actionConsumesMove: false, price: 300, disabled: false },
-    { id: 'skeleton_revival', category: 'special', name: '骷髅复苏', desc: '本局解锁骷髅复苏：在落子模式可选择“骷髅”，消耗 1 墓地在己方半场部署一只兵/卒。', actionConsumesMove: true, price: 260, disabled: false },
+    { id: 'skeleton_revival', category: 'special', name: '骷髅复苏', desc: '本局解锁骷髅复苏：在落子模式可选择“骷髅”，消耗 1 墓地在己方半场部署一枚骷髅棋。', actionConsumesMove: true, price: 260, disabled: false },
     { id: 'ethereal_step', category: 'special', name: '以太步', desc: '本局解锁以太步：选择己方棋子，再选一个己方锚点棋子，将前者移动到锚点周围8格任一空位。不能吃子。', actionConsumesMove: true, price: 240, disabled: false },
     { id: 'smoke_bomb', category: 'special', name: '烟雾弹', desc: '本局解锁烟雾弹：选择棋盘目标点，生成 3x3 烟雾区（效果与扑克同花烟雾弹一致）。', actionConsumesMove: true, price: 220, disabled: false },
-    { id: 'chess_opening', category: 'chess', name: '布局强化', desc: '即将开放', actionConsumesMove: false, price: 180, disabled: true },
-    { id: 'go_control', category: 'chess', name: '控盘强化', desc: '即将开放', actionConsumesMove: false, price: 200, disabled: true },
-    { id: 'special_supply', category: 'special', name: '战术补给', desc: '即将开放', actionConsumesMove: false, price: 260, disabled: true },
-    { id: 'special_repair', category: 'special', name: '紧急修复', desc: '即将开放', actionConsumesMove: false, price: 300, disabled: true }
+    
 ];
 
 const ONLINE_ERROR_TEXT = {
@@ -57,14 +54,27 @@ import hallStatusReady from '../assets/hall-avif/status_ready.avif';
 import hallStatusUnready from '../assets/hall-avif/status_unready.avif';
 import hallAvatarDefault from '../assets/hall-avif/avatar_default.avif';
 
+const SLOT_ICONS = {
+    flip_chess_pair: '🧿',
+    skeleton_revival: '💀',
+    ethereal_step: '🌀',
+    smoke_bomb: '🌫️',
+    intl_chess_global: '♞',
+    gomoku_mode: '⚫'
+};
+
 export class AppUIController {
     constructor(app) {
         this.app = app;
         this.modeBtn = null;
+        this.moveModeBtn = null;
+        this.placeModeBtn = null;
         this.placePieceBtn = null;
         this.currentView = 'lobby';
         this.countdownTicker = null;
         this.lobbyStage = 'entry';
+        this.roundShopLastPhaseIsBuying = null;
+        this.gameTestShopAutoOpened = false;
     }
 
     resolveOnlineErrorMessage(code, fallbackMessage) {
@@ -80,33 +90,22 @@ export class AppUIController {
             return;
         }
 
-        this.modeBtn = this.createButton('切换到围棋模式', '#667eea', () => this.app.toggleMode());
-        statusDiv.appendChild(this.modeBtn);
+        this.moveModeBtn = this.createButton('走棋', '#4b5563', () => this.app.setGameMode('move'));
+        statusDiv.appendChild(this.moveModeBtn);
 
-        this.placePieceBtn = this.createButton('落子：围棋', '#0f766e', () => this.togglePlacePieceType());
-        this.placePieceBtn.style.marginLeft = '10px';
-        statusDiv.appendChild(this.placePieceBtn);
-
-        const pokerBtn = this.createButton('扑克', '#764ba2', () => this.app.togglePoker());
-        pokerBtn.style.marginLeft = '10px';
-        statusDiv.appendChild(pokerBtn);
+        this.placeModeBtn = this.createButton('落子', '#4b5563', () => this.app.setGameMode('place'));
+        this.placeModeBtn.style.marginLeft = '10px';
+        statusDiv.appendChild(this.placeModeBtn);
 
         const shopBtn = this.createButton('商店', '#2f855a', () => this.toggleRoundShop());
         shopBtn.style.marginLeft = '10px';
         statusDiv.appendChild(shopBtn);
 
         this.renderRoundShop();
+        this.renderItemSlots();
         this.renderOnlinePanel(this.app.getOnlineState());
         this.ensureCountdownTicker();
         this.updateModeUI(this.app.gameMode);
-    }
-
-    togglePlacePieceType() {
-        const hasSkeletonRevival = this.app.matchController?.hasSkeletonRevival?.(this.app.currentPlayer);
-        const options = hasSkeletonRevival ? ['go', 'flip', 'skeleton'] : ['go', 'flip'];
-        const index = options.indexOf(this.app.placeModePieceType);
-        const nextType = options[(index + 1) % options.length] || 'go';
-        this.app.setPlaceModePieceType(nextType);
     }
 
     ensureCountdownTicker() {
@@ -114,6 +113,7 @@ export class AppUIController {
         this.countdownTicker = setInterval(() => {
             if (this.currentView === 'match') {
                 this.renderRoundShop();
+                this.renderItemSlots();
             }
         }, 1000);
     }
@@ -132,8 +132,12 @@ export class AppUIController {
         if (!panel) {
             panel = document.createElement('div');
             panel.id = 'round-shop-panel';
-            panel.style.cssText = 'margin-top: 16px; border: 1px solid #d6d6d6; border-radius: 10px; padding: 14px; background: #fafafa;';
+            panel.style.cssText = 'position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:1200; width:min(92vw, 920px); max-height:78vh; overflow:auto; border:1px solid #d6d6d6; border-radius:12px; padding:14px; background:#fafafa; box-shadow:0 12px 36px rgba(0,0,0,0.18);';
             appRoot.appendChild(panel);
+        }
+        if (this.app?.isGameTestPage && !this.gameTestShopAutoOpened) {
+            panel.style.display = 'block';
+            this.gameTestShopAutoOpened = true;
         }
 
         const onlineState = this.app.getOnlineState();
@@ -150,6 +154,9 @@ export class AppUIController {
         const loadout = remoteSnapshot
             ? { purchasedEffects: (roundState.loadouts[currentPlayer]?.purchasedEffects || []).map(effectId => ({ effectId })) }
             : this.app.matchController.getLoadout(currentPlayer);
+        const purchasedEffects = remoteSnapshot
+            ? (roundState.loadouts[currentPlayer]?.purchasedEffects || []).map(effectId => ({ effectId }))
+            : (loadout.purchasedEffects || []);
         const purchasedCount = remoteSnapshot
             ? (roundState.loadouts[currentPlayer]?.purchasedEffects?.length || 0)
             : this.app.matchController.getPurchasedEffectSlotUsage(loadout);
@@ -166,6 +173,7 @@ export class AppUIController {
             ? (roundState.economies?.[currentPlayer]?.graveyard || 0)
             : (economy?.graveyard || 0);
         const isBuying = remoteSnapshot ? roundState.status === 'buying' : this.app.matchController.isRoundBuying();
+        const canPurchaseInCurrentPhase = isBuying || this.app?.isGameTestPage;
         const isFinished = !!matchState.winner;
         const phaseText = isBuying ? '购物时间' : '对局时间';
         const countdownText = remoteSnapshot && isBuying
@@ -179,11 +187,9 @@ export class AppUIController {
         header.innerHTML = `
             <div>
                 <div style="font-size:16px; color:#1f2937; font-weight:700;">Round 前商店</div>
-                <div style="font-size:13px; color:#4b5563; margin-top:4px;">第 ${matchState.currentRound} 局 | 阶段：${phaseText}${countdownText} | 我的颜色 ${currentPlayer === 'red' ? '红方' : '黑方'} | 余额 ${economy?.credits ?? '-'} | 墓地 ${graveyard} | 已购 ${purchasedCount}/3 | 翻转棋库存 ${flipChessStock} | 以太步次数 ${etherealStepCharges} | 烟雾弹次数 ${smokeBombCharges} | 剩余走棋 ${remoteSnapshot ? (roundState.sharedState?.turnBudget?.[currentPlayer] ?? 1) : this.app.getCurrentTurnMovesLeft()}</div>
+                <div style="font-size:13px; color:#4b5563; margin-top:4px;">第 ${matchState.currentRound} 局 | 阶段：${phaseText}${countdownText} | 我的颜色 ${currentPlayer === 'red' ? '红方' : '黑方'} | 余额 ${economy?.credits ?? '-'} | 墓地 ${graveyard} | 剩余走棋 ${remoteSnapshot ? (roundState.sharedState?.turnBudget?.[currentPlayer] ?? 1) : this.app.getCurrentTurnMovesLeft()}</div>
             </div>
             <div style="display:flex; gap:8px;">
-                <button id="round-ethereal-step-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#7c3aed; color:#fff; cursor:pointer;">以太步</button>
-                <button id="round-smoke-bomb-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#0ea5a5; color:#fff; cursor:pointer;">烟雾弹</button>
                 <button id="round-begin-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:pointer;">开始本局</button>
                 <button id="round-next-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#374151; color:#fff; cursor:pointer;">下一局</button>
             </div>
@@ -223,7 +229,7 @@ export class AppUIController {
                 const alreadyOwned = item.id === 'flip_chess_pair'
                     ? false
                     : loadout.purchasedEffects.some(entry => entry.effectId === item.id);
-                const cannotBuyNow = !isBuying || item.disabled || alreadyOwned || purchasedCount >= 3;
+                const cannotBuyNow = !canPurchaseInCurrentPhase || item.disabled || alreadyOwned || purchasedCount >= 3;
                 if (alreadyOwned) {
                     buyBtn.textContent = '已购买';
                 }
@@ -240,9 +246,6 @@ export class AppUIController {
                     const result = this.app.purchaseEffect(item.id);
                     this.app.showNotification(result.message, result.success ? 'success' : 'warning');
                     this.renderRoundShop();
-                    if (this.app.pokerController && typeof this.app.pokerController.renderPokerHand === 'function') {
-                        this.app.pokerController.renderPokerHand();
-                    }
                 };
 
                 row.appendChild(name);
@@ -256,40 +259,9 @@ export class AppUIController {
 
         const beginBtn = document.getElementById('round-begin-btn');
         const nextBtn = document.getElementById('round-next-btn');
-        const etherealStepBtn = document.getElementById('round-ethereal-step-btn');
-        const smokeBombBtn = document.getElementById('round-smoke-bomb-btn');
-
         if (remoteSnapshot) {
             beginBtn.style.display = 'none';
-            etherealStepBtn.style.display = 'none';
-            smokeBombBtn.style.display = 'none';
         }
-
-        const canUseEtherealStep = !remoteSnapshot
-            && this.app.matchController?.isRoundActive?.()
-            && this.app.matchController?.hasEtherealStep?.(currentPlayer)
-            && this.app.getCurrentTurnMovesLeft() > 0;
-        etherealStepBtn.disabled = !canUseEtherealStep;
-        if (etherealStepBtn.disabled) {
-            etherealStepBtn.style.opacity = '0.55';
-            etherealStepBtn.style.cursor = 'not-allowed';
-        }
-        etherealStepBtn.onclick = () => {
-            this.app.startEtherealStep();
-        };
-
-        const canUseSmokeBomb = !remoteSnapshot
-            && this.app.matchController?.isRoundActive?.()
-            && this.app.matchController?.hasSmokeBomb?.(currentPlayer)
-            && this.app.getCurrentTurnMovesLeft() > 0;
-        smokeBombBtn.disabled = !canUseSmokeBomb;
-        if (smokeBombBtn.disabled) {
-            smokeBombBtn.style.opacity = '0.55';
-            smokeBombBtn.style.cursor = 'not-allowed';
-        }
-        smokeBombBtn.onclick = () => {
-            this.app.startSmokeBomb();
-        };
 
         beginBtn.disabled = !isBuying || isFinished || !!remoteSnapshot;
         if (beginBtn.disabled) {
@@ -301,6 +273,9 @@ export class AppUIController {
             if (ok) {
                 this.app.showNotification('本局开始', 'success');
                 this.renderRoundShop();
+                if (!this.app?.isGameTestPage) {
+                    panel.style.display = 'none';
+                }
             }
         };
 
@@ -312,7 +287,158 @@ export class AppUIController {
         nextBtn.onclick = () => {
             this.app.startNextRound();
             this.renderRoundShop();
+            this.renderItemSlots();
         };
+
+        if (this.app?.isGameTestPage) {
+            // 测试页仅首次自动弹出，之后尊重手动开关
+        } else {
+            if (this.roundShopLastPhaseIsBuying === null || this.roundShopLastPhaseIsBuying !== isBuying) {
+                if (isBuying) {
+                    // 进入购买阶段时自动弹出一次，之后允许手动收起
+                    panel.style.display = 'block';
+                }
+                if (!isBuying) {
+                    // 进入对局阶段时自动收起
+                    panel.style.display = 'none';
+                }
+                this.roundShopLastPhaseIsBuying = isBuying;
+            }
+        }
+    }
+
+    renderItemSlots() {
+        const matchView = document.getElementById('match-view');
+        if (!matchView) return;
+
+        let slotPanel = document.getElementById('item-slot-panel');
+        if (!slotPanel) {
+            slotPanel = document.createElement('div');
+            slotPanel.id = 'item-slot-panel';
+            slotPanel.style.cssText = 'display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:8px; margin:10px auto 0 auto; width:min(500px, 100%);';
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+                matchView.insertBefore(slotPanel, statusEl);
+            } else {
+                matchView.appendChild(slotPanel);
+            }
+        }
+
+        const onlineState = this.app.getOnlineState();
+        const remoteSnapshot = onlineState?.roomSnapshot || null;
+        const roundState = remoteSnapshot?.roundState || this.app.getRoundState();
+        if (!roundState) {
+            slotPanel.innerHTML = '';
+            return;
+        }
+
+        const currentPlayer = remoteSnapshot ? (onlineState.color || this.app.currentPlayer) : this.app.currentPlayer;
+        const loadout = remoteSnapshot
+            ? { purchasedEffects: (roundState.loadouts[currentPlayer]?.purchasedEffects || []).map(effectId => ({ effectId })) }
+            : this.app.matchController.getLoadout(currentPlayer);
+        const purchasedEffects = remoteSnapshot
+            ? (roundState.loadouts[currentPlayer]?.purchasedEffects || []).map(effectId => ({ effectId }))
+            : (loadout.purchasedEffects || []);
+
+        const flipChessStock = remoteSnapshot
+            ? (roundState.loadouts[currentPlayer]?.flipChessStock || 0)
+            : (loadout.flipChessStock || 0);
+        const etherealStepCharges = remoteSnapshot
+            ? (roundState.loadouts[currentPlayer]?.etherealStepCharges || 0)
+            : (loadout.etherealStepCharges || 0);
+        const smokeBombCharges = remoteSnapshot
+            ? (roundState.loadouts[currentPlayer]?.smokeBombCharges || 0)
+            : (loadout.smokeBombCharges || 0);
+        const graveyard = remoteSnapshot
+            ? (roundState.economies?.[currentPlayer]?.graveyard || 0)
+            : (this.app.matchController.getEconomy(currentPlayer)?.graveyard || 0);
+
+        const isRoundActive = remoteSnapshot ? roundState.status === 'playing' : this.app.matchController?.isRoundActive?.();
+        const getItemByEffectId = (effectId) => SHOP_ITEMS.find(item => item.id === effectId);
+
+        slotPanel.innerHTML = '';
+        for (let i = 0; i < 3; i++) {
+            const slot = document.createElement('div');
+            slot.style.cssText = 'border:1px dashed #d1d5db; border-radius:8px; padding:8px; min-height:54px; background:#fff;';
+            const effectEntry = purchasedEffects[i];
+
+            if (!effectEntry) {
+                slot.innerHTML = '<div style="font-size:12px; color:#9ca3af; text-align:center; padding-top:10px;">空槽位</div>';
+                slotPanel.appendChild(slot);
+                continue;
+            }
+
+            const effectId = effectEntry.effectId;
+            const item = getItemByEffectId(effectId);
+            const isActiveItem = effectId === 'ethereal_step' || effectId === 'smoke_bomb' || effectId === 'flip_chess_pair' || effectId === 'skeleton_revival';
+            const desc = `${item?.desc || effectId}${this.getMoveDeclarationText(item?.actionConsumesMove ?? false)}`;
+
+            let charges = 0;
+            if (effectId === 'ethereal_step') charges = etherealStepCharges;
+            if (effectId === 'smoke_bomb') charges = smokeBombCharges;
+            if (effectId === 'flip_chess_pair') charges = flipChessStock;
+            if (effectId === 'skeleton_revival') charges = graveyard;
+            const icon = SLOT_ICONS[effectId] || '🧩';
+
+            const btn = document.createElement('button');
+            btn.textContent = `${icon} ${charges}`;
+            btn.title = desc;
+            btn.style.cssText = 'width:100%; padding:8px 6px; border:none; border-radius:6px; font-size:16px; font-weight:700; color:#fff;';
+
+            if (!isActiveItem) {
+                btn.style.background = '#6b7280';
+                btn.style.cursor = 'help';
+                btn.onclick = () => {
+                    this.app.showNotification(`${item?.name || effectId}：被动道具，购买后本局生效`, 'info');
+                };
+            } else {
+                let canUse = !remoteSnapshot
+                    && isRoundActive
+                    && this.app.getCurrentTurnMovesLeft() > 0;
+
+                if (effectId === 'ethereal_step' || effectId === 'smoke_bomb') {
+                    canUse = canUse && charges > 0;
+                }
+                if (effectId === 'flip_chess_pair') {
+                    canUse = canUse && charges > 0;
+                }
+                if (effectId === 'skeleton_revival') {
+                    canUse = canUse && this.app.matchController?.hasSkeletonRevival?.(currentPlayer);
+                }
+
+                if (effectId === 'ethereal_step') btn.style.background = '#7c3aed';
+                if (effectId === 'smoke_bomb') btn.style.background = '#0ea5a5';
+                if (effectId === 'flip_chess_pair') btn.style.background = '#2563eb';
+                if (effectId === 'skeleton_revival') btn.style.background = '#7c2d12';
+
+                if (!canUse) {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.55';
+                    btn.style.cursor = 'not-allowed';
+                } else {
+                    btn.style.cursor = 'pointer';
+                    btn.onclick = () => {
+                        if (effectId === 'ethereal_step') this.app.startEtherealStep();
+                        if (effectId === 'smoke_bomb') this.app.startSmokeBomb();
+                        if (effectId === 'flip_chess_pair') {
+                            this.app.gameMode = 'place';
+                            this.app.setPlaceModePieceType('flip');
+                            this.app.showNotification('已切换为翻转棋落子模式', 'info');
+                        }
+                        if (effectId === 'skeleton_revival') {
+                            this.app.gameMode = 'place';
+                            this.app.setPlaceModePieceType('skeleton');
+                            this.app.showNotification('已切换为骷髅复苏落子模式', 'info');
+                        }
+                        this.app.ui?.updateModeUI?.(this.app.gameMode);
+                        this.app.render?.();
+                    };
+                }
+            }
+
+            slot.appendChild(btn);
+            slotPanel.appendChild(slot);
+        }
     }
 
     renderOnlinePanel(onlineState) {
@@ -431,13 +557,11 @@ export class AppUIController {
 
         const shopPanel = document.getElementById('round-shop-panel');
         if (shopPanel) {
-            shopPanel.style.display = view === 'match' ? 'block' : 'none';
+            if (view !== 'match') {
+                shopPanel.style.display = 'none';
+            }
         }
 
-        const pokerContainer = document.getElementById('poker-hand-container');
-        if (pokerContainer && view !== 'match') {
-            pokerContainer.classList.add('translate-y-full');
-        }
     }
 
     renderLobbyHtml(state) {
@@ -644,27 +768,18 @@ export class AppUIController {
     }
 
     updateModeUI(gameMode) {
-        if (!this.modeBtn) {
+        if (!this.moveModeBtn || !this.placeModeBtn) {
             return;
         }
 
-        if (this.placePieceBtn) {
-            this.placePieceBtn.style.display = gameMode === 'place' ? 'inline-block' : 'none';
-            const pieceTypeText = this.app.placeModePieceType === 'flip'
-                ? '翻转棋'
-                : (this.app.placeModePieceType === 'skeleton' ? '骷髅' : '围棋');
-            this.placePieceBtn.textContent = `落子：${pieceTypeText}`;
-        }
-
         if (gameMode === 'move') {
-            this.modeBtn.textContent = '下棋模式';
-            this.updateStatus('下棋模式 - 移动棋子');
+            this.moveModeBtn.style.background = '#2563eb';
+            this.placeModeBtn.style.background = '#4b5563';
+            this.updateStatus('走棋模式');
         } else {
-            this.modeBtn.textContent = '落子模式';
-            const pieceTypeText = this.app.placeModePieceType === 'flip'
-                ? '翻转棋'
-                : (this.app.placeModePieceType === 'skeleton' ? '骷髅（兵/卒）' : '围棋子');
-            this.updateStatus(`落子模式 - 当前放置${pieceTypeText}`);
+            this.moveModeBtn.style.background = '#4b5563';
+            this.placeModeBtn.style.background = '#2563eb';
+            this.updateStatus('落子模式');
         }
     }
 

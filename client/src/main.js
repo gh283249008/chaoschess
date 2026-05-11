@@ -3,14 +3,12 @@ import { EventBus } from './core/EventBus.js';
 import { Board } from './core/Board.js';
 import { ChineseChessPlugin } from './plugins/pieces/ChineseChess/ChineseChessPlugin.js';
 import { GoPlugin } from './plugins/pieces/Go/GoPlugin.js';
-import { PokerPlugin } from './plugins/cards/Poker/PokerPlugin.js';
 import { InternationalChessPlugin } from './plugins/pieces/InternationalChess/InternationalChessPlugin.js';
 import { FlipChessPlugin } from './plugins/pieces/FlipChess/FlipChessPlugin.js';
 import { StatusEffectManager } from './core/StatusEffectManager.js';
 import { Renderer } from './ui/Renderer.js';
 import { FeedbackController } from './ui/FeedbackController.js';
 import { AppUIController } from './ui/AppUIController.js';
-import { PokerController } from './game/PokerController.js';
 import { TurnController } from './game/TurnController.js';
 import { GoController } from './game/GoController.js';
 import { ChessController } from './game/ChessController.js';
@@ -24,6 +22,7 @@ import { EffectPipeline } from './game/EffectPipeline.js';
  */
 class ChaosChessApp {
     constructor() {
+        this.isGameTestPage = window.location.pathname.endsWith('/game-test.html');
         this.pluginManager = new PluginManager();
         this.eventBus = new EventBus();
         this.board = new Board();
@@ -33,7 +32,6 @@ class ChaosChessApp {
         this.renderer = new Renderer(this.canvas, this.pluginManager);
         this.feedback = new FeedbackController();
         this.ui = new AppUIController(this);
-        this.pokerController = new PokerController(this);
         this.turnController = new TurnController(this);
         this.goController = new GoController(this);
         this.chessController = new ChessController(this);
@@ -50,14 +48,6 @@ class ChaosChessApp {
 
         // Go plugin reference
         this.goPlugin = null;
-        this.pokerPlugin = null;
-
-        // Poker state
-        this.pokerHands = {
-            red: [],
-            black: []
-        };
-        this.selectedCards = [];
         this.waitingForTarget = null;
         this.turnBudget = {
             red: 1,
@@ -66,6 +56,85 @@ class ChaosChessApp {
         this.applyingRemoteAction = false;
 
         this.init();
+    }
+
+    shouldSuppressNotification(message) {
+        if (!message || typeof message !== 'string') {
+            return false;
+        }
+
+        const exact = new Set([
+            '联机协议版本不一致，可能存在同步问题',
+            '进入购物阶段',
+            '进入对局阶段',
+            '当前局已结束',
+            '轮到红方行动',
+            '轮到黑方行动',
+            '本局开始',
+            '被动道具，购买后本局生效',
+            '已切换为翻转棋落子模式',
+            '已切换为骷髅复苏落子模式',
+            '当前走棋次数已耗尽，立即切换下一回合',
+            '翻转棋不可移动，请在落子模式放置翻转棋形成夹击',
+            '翻转棋不能直接吃子，只能通过夹击翻转夺取占有权',
+            '未购买骷髅复苏，本局不可部署骷髅',
+            '部署骷髅（消耗 1 墓地，视为一步走棋）',
+            '当前局未开始，无法使用烟雾弹',
+            '未购买烟雾弹，本局不可使用',
+            '烟雾弹本局次数已用尽',
+            '烟雾弹：请选择棋盘目标点',
+            '烟雾弹次数不足',
+            '烟雾弹已部署（3x3）',
+            '烟雾已消散',
+            '当前局未开始，无法使用以太步',
+            '未购买以太步，本局不可使用',
+            '以太步本局次数已用尽',
+            '以太步：先选择一个己方棋子',
+            '请先选择己方棋子作为移动目标',
+            '以太步：再选择一个己方棋子作为锚点',
+            '请选择己方棋子作为锚点',
+            '锚点不能与被移动棋子相同',
+            '以太步：选择锚点周围8格中的空位',
+            '目标必须是锚点周围8格内的空位',
+            '以太步次数不足',
+            '以太步生效（视为一步走棋）',
+            '国际象棋插件未加载，效果未生效',
+            '放置围棋子（视为一步走棋）',
+            '本方启用五子棋模式且对手未启用，本方失去提子能力',
+            '河道封锁已解除',
+            '请选择5张牌！',
+            '当前局未开始，无法出牌。',
+            '悔棋功能暂未实现',
+            '无效目标，请重新选择！'
+        ]);
+
+        if (exact.has(message)) {
+            return true;
+        }
+
+        const prefixes = [
+            '轮到',
+            '购买成功：效果',
+            '移动翻转棋（视为一步走棋）',
+            '放置翻转棋（视为一步走棋）',
+            '翻转棋库存不足，请切换为围棋子或先购买翻转棋',
+            '翻转棋受到',
+            '红方已启用国际象棋体系',
+            '黑方已启用国际象棋体系',
+            '未购买德州扑克效果（本局价格',
+            '🔥 ',
+            '区域毁灭！移除了 ',
+            '成功部署国际象棋小兵',
+            '墙壁已建造',
+            '烟雾弹已部署！',
+            ' 被冻结了',
+            ' 被处决了',
+            '获得额外行动机会！',
+            '河道已封锁！',
+            '场上围棋已清空，且禁止再下围棋！'
+        ];
+
+        return prefixes.some(prefix => message.startsWith(prefix));
     }
 
     async init() {
@@ -85,9 +154,6 @@ class ChaosChessApp {
 
             const flipChess = new FlipChessPlugin();
             this.pluginManager.registerPiecePlugin('FlipChess', flipChess);
-
-            this.pokerPlugin = new PokerPlugin();
-            this.pluginManager.registerCardPlugin('Poker', this.pokerPlugin);
 
             this.matchController.initMatch('BO3');
             console.log('✓ Match initialized in BO3 mode');
@@ -109,9 +175,23 @@ class ChaosChessApp {
         // 添加模式切换按钮
         this.addModeToggle();
 
-        this.connectOnline();
+        if (this.isGameTestPage) {
+            this.enterGameTestMode();
+        } else {
+            this.connectOnline();
+        }
 
         console.log('✓ Application initialized');
+    }
+
+    enterGameTestMode() {
+        this.ui?.setView?.('match');
+        if (this.matchController?.isRoundBuying?.()) {
+            this.matchController.beginRound();
+        }
+        this.updateStatus('局内测试模式 - 联机已关闭');
+        this.ui?.renderRoundShop?.();
+        this.render();
     }
 
     async connectOnline() {
@@ -138,6 +218,14 @@ class ChaosChessApp {
         this.render();
     }
 
+    setGameMode(mode) {
+        const nextMode = mode === 'place' ? 'place' : 'move';
+        this.gameMode = nextMode;
+        this.selectedPiece = null;
+        this.ui.updateModeUI(this.gameMode);
+        this.render();
+    }
+
     setPlaceModePieceType(pieceType) {
         if (pieceType === 'flip' || pieceType === 'skeleton') {
             this.placeModePieceType = pieceType;
@@ -149,6 +237,9 @@ class ChaosChessApp {
 
     // 游戏内通知系统
     showNotification(message, type = 'info') {
+        if (this.shouldSuppressNotification(message)) {
+            return;
+        }
         this.feedback.showNotification(message, type);
     }
 
@@ -286,18 +377,6 @@ class ChaosChessApp {
         this.ui.displayPlugins(plugins);
     }
 
-    togglePoker() {
-        this.pokerController.togglePoker();
-    }
-
-    playPokerHand() {
-        this.pokerController.playPokerHand();
-    }
-
-    purchaseSelectedHandEffect() {
-        return this.pokerController.purchaseSelectedHandEffect();
-    }
-
     executeTargetEffect(x, y) {
         if (this.waitingForTarget?.type === 'ethereal_step') {
             return this.executeEtherealStepTarget(x, y);
@@ -305,7 +384,7 @@ class ChaosChessApp {
         if (this.waitingForTarget?.type === 'smoke_bomb') {
             return this.executeSmokeBombTarget(x, y);
         }
-        return this.pokerController.executeTargetEffect(x, y);
+        return false;
     }
 
     startSmokeBomb() {
@@ -607,5 +686,5 @@ class ChaosChessApp {
 
 // 启动应用
 window.addEventListener('DOMContentLoaded', () => {
-    new ChaosChessApp();
+    window.app = new ChaosChessApp();
 });

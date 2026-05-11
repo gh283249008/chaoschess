@@ -92,7 +92,7 @@ export class GoController {
 
     createSkeletonPiece(x, y, player) {
         return {
-            type: player === 'red' ? '兵' : '卒',
+            type: '骷',
             x,
             y,
             player,
@@ -105,6 +105,10 @@ export class GoController {
     checkGomokuStateAfterPlacement(placedPiece) {
         const player = this.app.currentPlayer;
         if (!this.app.matchController?.hasGomokuMode(player)) {
+            return false;
+        }
+
+        if (!placedPiece || placedPiece.pluginSource !== 'Go') {
             return false;
         }
 
@@ -188,7 +192,7 @@ export class GoController {
         let count = 0;
         while (this.app.board.isValidPosition(x, y)) {
             const target = this.app.board.getPieceAt(x, y);
-            if (!target || target.player !== piece.player) {
+            if (!target || target.player !== piece.player || target.pluginSource !== 'Go') {
                 break;
             }
             count++;

@@ -268,8 +268,8 @@ export class OnlineController {
         if (this.app.ui && typeof this.app.ui.renderRoundShop === 'function') {
             this.app.ui.renderRoundShop();
         }
-        if (this.app.pokerController && typeof this.app.pokerController.renderPokerHand === 'function') {
-            this.app.pokerController.renderPokerHand();
+        if (this.app.ui && typeof this.app.ui.renderItemSlots === 'function') {
+            this.app.ui.renderItemSlots();
         }
         if (typeof this.app.render === 'function') {
             this.app.render();

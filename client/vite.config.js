@@ -1,8 +1,19 @@
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 export default {
     root: './',
     build: {
         outDir: 'dist',
-        emptyOutDir: true
+        emptyOutDir: true,
+        rollupOptions: {
+            input: {
+                main: resolve(__dirname, 'index.html'),
+                gameTest: resolve(__dirname, 'game-test.html')
+            }
+        }
     },
     server: {
         port: 9001,

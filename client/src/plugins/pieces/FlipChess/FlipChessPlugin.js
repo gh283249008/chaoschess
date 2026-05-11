@@ -22,22 +22,7 @@ export class FlipChessPlugin extends PiecePlugin {
     }
 
     validateMove(piece, from, to, boardState) {
-        if (!piece || piece.type !== '翻') {
-            return false;
-        }
-
-        if (to.x < 0 || to.x > 8 || to.y < 0 || to.y > 9) {
-            return false;
-        }
-
-        const dx = Math.abs(to.x - from.x);
-        const dy = Math.abs(to.y - from.y);
-        if ((dx === 0 && dy === 0) || dx > 1 || dy > 1) {
-            return false;
-        }
-
-        const target = boardState.pieces.find(candidate => candidate.x === to.x && candidate.y === to.y);
-        return !target;
+        return false;
     }
 
     render(ctx, piece, x, y) {

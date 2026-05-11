@@ -15,7 +15,6 @@ const DEFAULT_ECONOMY_CONFIG = {
         default: 120
     },
     effectPrices: {
-        poker_global: 420,
         intl_chess_global: 360,
         flip_chess_pair: 280,
         gomoku_mode: 300,
@@ -100,11 +99,6 @@ export class MatchController {
             initialPieces.forEach(piece => this.app.board.addPiece(piece));
         }
 
-        if (this.app.pokerPlugin) {
-            this.app.pokerHands.red = this.app.pokerPlugin.dealHand(7);
-            this.app.pokerHands.black = this.app.pokerPlugin.dealHand(7);
-        }
-
         this.app.updateStatus(this.getRoundShopStatusText());
         if (this.app.ui && typeof this.app.ui.renderRoundShop === 'function') {
             this.app.ui.renderRoundShop();
@@ -163,7 +157,15 @@ export class MatchController {
 
         const targetSetup = intlPlugin.getInitialSetup().filter(p => p.player === player);
         targetSetup.forEach(piece => {
-            this.app.board.addPiece({ ...piece, hasMoved: false });
+            const mappedX = piece.x >= 4 ? piece.x + 1 : piece.x;
+            const mappedY = Math.min(9, piece.y + 2);
+            this.app.board.addPiece({
+                ...piece,
+                x: mappedX,
+                y: mappedY,
+                hasMoved: false,
+                intlStartRow: piece.type === 'Pawn' ? mappedY : undefined
+            });
         });
 
         this.consumePurchasedEffect('intl_chess_global', player);
@@ -184,7 +186,7 @@ export class MatchController {
     }
 
     purchaseEffect(effectId, player = this.app.currentPlayer) {
-        if (!this.isRoundBuying()) {
+        if (!this.isRoundBuying() && !this.app?.isGameTestPage) {
             return { success: false, message: '仅可在局前准备阶段购买，开局后无法购买。' };
         }
 
@@ -223,8 +225,17 @@ export class MatchController {
             loadout.smokeBomb = true;
             loadout.smokeBombCharges = 1;
         }
+
+        if (this.app?.isGameTestPage && this.isRoundActive() && effectId === 'intl_chess_global') {
+            this.applyInternationalChessLoadoutForPlayer(player);
+            this.app.render?.();
+        }
+
         if (this.app.ui && typeof this.app.ui.renderRoundShop === 'function') {
             this.app.ui.renderRoundShop();
+        }
+        if (this.app.ui && typeof this.app.ui.renderItemSlots === 'function') {
+            this.app.ui.renderItemSlots();
         }
         return { success: true, message: `购买成功：效果 ${effectId}，花费 ${price}` };
     }

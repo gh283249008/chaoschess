@@ -676,6 +676,8 @@ class ChaosChessApp {
         }
         // 使用不消耗走棋次数，也不视为一次走棋，直接增加额外次数
         this.addTurnMoves(this.currentPlayer, 1);
+        // 消耗道具
+        this.matchController.consumeDragonWrath(this.currentPlayer);
         this.showNotification('守护巨龙之怒已生效（+1 走棋次数）', 'success');
         this.render();
         this.ui?.renderRoundShop?.();

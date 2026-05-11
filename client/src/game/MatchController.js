@@ -427,6 +427,15 @@ export class MatchController {
         return true;
     }
 
+    consumeDragonWrath(player = this.app.currentPlayer) {
+        const loadout = this.roundState.loadouts[player];
+        if (!loadout || !loadout.dragonWrathUsed) {
+            return false;
+        }
+        loadout.dragonWrathUsed = false;
+        return true;
+    }
+
     spendGraveyard(player = this.app.currentPlayer, amount = 1) {
         const economy = this.roundState.economies[player];
         const cost = Math.max(0, amount);

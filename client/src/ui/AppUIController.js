@@ -10,6 +10,7 @@ const SHOP_ITEMS = [
     { id: 'skeleton_revival', category: 'special', name: '骷髅复苏', desc: '本局解锁骷髅复苏：在落子模式可选择“骷髅”，消耗 1 墓地在己方半场部署一枚骷髅棋。', actionConsumesMove: true, price: 260, disabled: false },
     { id: 'ethereal_step', category: 'special', name: '以太步', desc: '本局解锁以太步：选择己方棋子，再选一个己方锚点棋子，将前者移动到锚点周围8格任一空位。不能吃子。', actionConsumesMove: true, price: 240, disabled: false },
     { id: 'smoke_bomb', category: 'special', name: '烟雾弹', desc: '本局解锁烟雾弹：选择棋盘目标点，生成 3x3 烟雾区（效果与扑克同花烟雾弹一致）。', actionConsumesMove: true, price: 220, disabled: false },
+    { id: 'dragon_wrath', category: 'special', name: '守护巨龙之怒', desc: '整场 BO3/BO5 每方仅可购买 1 次。使用后增加一次额外的走棋次数。', actionConsumesMove: false, price: 400, disabled: false },
     
 ];
 
@@ -59,6 +60,7 @@ const SLOT_ICONS = {
     skeleton_revival: '💀',
     ethereal_step: '🌀',
     smoke_bomb: '🌫️',
+    dragon_wrath: '🐉',
     intl_chess_global: '♞',
     gomoku_mode: '⚫'
 };
@@ -169,6 +171,9 @@ export class AppUIController {
         const smokeBombCharges = remoteSnapshot
             ? (roundState.loadouts[currentPlayer]?.smokeBombCharges || 0)
             : (loadout.smokeBombCharges || 0);
+        const dragonWrathUsed = remoteSnapshot
+            ? Boolean(roundState.loadouts[currentPlayer]?.dragonWrathUsed)
+            : Boolean(loadout.dragonWrathUsed);
         const graveyard = remoteSnapshot
             ? (roundState.economies?.[currentPlayer]?.graveyard || 0)
             : (economy?.graveyard || 0);
@@ -349,6 +354,9 @@ export class AppUIController {
         const smokeBombCharges = remoteSnapshot
             ? (roundState.loadouts[currentPlayer]?.smokeBombCharges || 0)
             : (loadout.smokeBombCharges || 0);
+        const dragonWrathUsed = remoteSnapshot
+            ? Boolean(roundState.loadouts[currentPlayer]?.dragonWrathUsed)
+            : Boolean(loadout.dragonWrathUsed);
         const graveyard = remoteSnapshot
             ? (roundState.economies?.[currentPlayer]?.graveyard || 0)
             : (this.app.matchController.getEconomy(currentPlayer)?.graveyard || 0);
@@ -378,6 +386,7 @@ export class AppUIController {
             if (effectId === 'smoke_bomb') charges = smokeBombCharges;
             if (effectId === 'flip_chess_pair') charges = flipChessStock;
             if (effectId === 'skeleton_revival') charges = graveyard;
+            if (effectId === 'dragon_wrath') charges = dragonWrathUsed ? 1 : 0;
             const icon = SLOT_ICONS[effectId] || '🧩';
 
             const btn = document.createElement('button');
@@ -405,11 +414,15 @@ export class AppUIController {
                 if (effectId === 'skeleton_revival') {
                     canUse = canUse && this.app.matchController?.hasSkeletonRevival?.(currentPlayer);
                 }
+                if (effectId === 'dragon_wrath') {
+                    canUse = canUse && charges > 0;
+                }
 
                 if (effectId === 'ethereal_step') btn.style.background = '#7c3aed';
                 if (effectId === 'smoke_bomb') btn.style.background = '#0ea5a5';
                 if (effectId === 'flip_chess_pair') btn.style.background = '#2563eb';
                 if (effectId === 'skeleton_revival') btn.style.background = '#7c2d12';
+                if (effectId === 'dragon_wrath') btn.style.background = '#b45309';
 
                 if (!canUse) {
                     btn.disabled = true;
@@ -429,6 +442,9 @@ export class AppUIController {
                             this.app.gameMode = 'place';
                             this.app.setPlaceModePieceType('skeleton');
                             this.app.showNotification('已切换为骷髅复苏落子模式', 'info');
+                        }
+                        if (effectId === 'dragon_wrath') {
+                            this.app.useDragonWrath();
                         }
                         this.app.ui?.updateModeUI?.(this.app.gameMode);
                         this.app.render?.();

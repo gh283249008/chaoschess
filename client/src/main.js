@@ -105,7 +105,8 @@ class ChaosChessApp {
             '请选择5张牌！',
             '当前局未开始，无法出牌。',
             '悔棋功能暂未实现',
-            '无效目标，请重新选择！'
+            '无效目标，请重新选择！',
+            '守护巨龙之怒已生效（+1 走棋次数）'
         ]);
 
         if (exact.has(message)) {
@@ -662,6 +663,30 @@ class ChaosChessApp {
 
     refreshOnlineRooms() {
         this.onlineController.refreshRooms();
+    }
+
+    useDragonWrath() {
+        if (!this.matchController?.isRoundActive()) {
+            this.showNotification('当前局未开始，无法使用守护巨龙之怒', 'warning');
+            return false;
+        }
+        if (!this.matchController?.hasDragonWrath(this.currentPlayer)) {
+            this.showNotification('未购买守护巨龙之怒，本局不可使用', 'warning');
+            return false;
+        }
+        if (this.getCurrentTurnMovesLeft() <= 0) {
+            // 使用不消耗走棋次数，但需要有至少1次才能触发（符合规则）
+            this.showNotification('当前走棋次数已耗尽，无法使用守护巨龙之怒', 'warning');
+            return false;
+        }
+
+        // 增加一次额外的走棋次数
+        this.addTurnMoves(this.currentPlayer, 1);
+        this.showNotification('守护巨龙之怒已生效（+1 走棋次数）', 'success');
+        this.render();
+        this.ui?.renderRoundShop?.();
+        this.ui?.renderItemSlots?.();
+        return true;
     }
 
     showKillFeed(killerName, victimName, type = 'eat') {

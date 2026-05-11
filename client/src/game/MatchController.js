@@ -21,6 +21,7 @@ const DEFAULT_ECONOMY_CONFIG = {
         skeleton_revival: 260,
         ethereal_step: 240,
         smoke_bomb: 220,
+        dragon_wrath: 400,
         0: 150,
         1: 220,
         2: 260,
@@ -128,6 +129,7 @@ export class MatchController {
             skeletonRevival: false,
             etherealStep: false,
             smokeBomb: false,
+            dragonWrathUsed: false,
             etherealStepCharges: 0,
             smokeBombCharges: 0
         };
@@ -190,6 +192,14 @@ export class MatchController {
             return { success: false, message: '仅可在局前准备阶段购买，开局后无法购买。' };
         }
 
+        // 全局限购：守护巨龙之怒整场 BO3/BO5 每方仅可购买 1 次
+        if (effectId === 'dragon_wrath') {
+            const hasUsedBefore = this.matchState.roundsDragonWrathUsed?.[player] || false;
+            if (hasUsedBefore) {
+                return { success: false, message: '守护巨龙之怒整场比赛每方仅可购买 1 次。' };
+            }
+        }
+
         const loadout = this.roundState.loadouts[player];
         const slotCost = this.getEffectSlotCost(effectId);
         if (this.getPurchasedEffectSlotUsage(loadout) + slotCost > 3) {
@@ -224,6 +234,15 @@ export class MatchController {
         if (effectId === 'smoke_bomb') {
             loadout.smokeBomb = true;
             loadout.smokeBombCharges = 1;
+        }
+        if (effectId === 'dragon_wrath') {
+            // 标记本轮已购买（但不消耗次数，因为是主动道具）
+            loadout.dragonWrathUsed = true;
+            // 记录全局限购状态
+            if (!this.matchState.roundsDragonWrathUsed) {
+                this.matchState.roundsDragonWrathUsed = {};
+            }
+            this.matchState.roundsDragonWrathUsed[player] = true;
         }
 
         if (this.app?.isGameTestPage && this.isRoundActive() && effectId === 'intl_chess_global') {
@@ -376,6 +395,10 @@ export class MatchController {
 
     hasSmokeBomb(player) {
         return Boolean(this.roundState.loadouts[player]?.smokeBomb);
+    }
+
+    hasDragonWrath(player) {
+        return Boolean(this.roundState.loadouts[player]?.dragonWrathUsed);
     }
 
     getEtherealStepCharges(player) {

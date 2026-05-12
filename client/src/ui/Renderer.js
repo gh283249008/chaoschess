@@ -46,22 +46,24 @@ export class Renderer {
     /**
      * 渲染当前本地游戏流程使用的棋盘状态。
      */
-    renderLocalGame({ board, gameMode, selectedPiece, currentPlayer, effectManager, waitingForTarget }) {
+    renderLocalGame({ board, gameMode, selectedPiece, currentPlayer, effectManager, waitingForTarget, viewerPlayer }) {
         this.clear();
         this.drawGrid();
         this.drawRiverLabels();
         this.drawRiverBlock(board.riverBlocked);
 
+        const observer = viewerPlayer || currentPlayer;
+
         board.pieces.forEach(piece => {
             const { x, y } = this.gridToScreen(piece.x, piece.y);
-            const hidden = this.isHiddenBySmoke(piece, board.smokeEffects, currentPlayer);
+            const hidden = this.isHiddenBySmoke(piece, board.smokeEffects, observer);
 
             if (!hidden) {
                 this.drawPiece(piece, x, y, gameMode, selectedPiece, effectManager);
             }
         });
 
-        this.drawLocalSmokeEffects(board.smokeEffects, currentPlayer);
+        this.drawLocalSmokeEffects(board.smokeEffects, observer);
         this.drawTargetHints(waitingForTarget, board);
     }
 

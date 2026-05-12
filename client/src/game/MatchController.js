@@ -22,6 +22,7 @@ const DEFAULT_ECONOMY_CONFIG = {
         ethereal_step: 240,
         smoke_bomb: 220,
         dragon_wrath: 400,
+        determination: 460,
         0: 150,
         1: 220,
         2: 260,
@@ -41,6 +42,7 @@ export class MatchController {
         this.config = DEFAULT_ECONOMY_CONFIG;
         this.matchState = null;
         this.roundState = null;
+        this.nextRoundTimer = null;
     }
 
     initMatch(mode = 'BO3') {
@@ -70,7 +72,19 @@ export class MatchController {
         this.startNextRound();
     }
 
+    getActiveRoundState() {
+        return this.app?.getOnlineState?.()?.roomSnapshot?.roundState || this.roundState;
+    }
+
+    getActiveMatchState() {
+        return this.app?.getOnlineState?.()?.roomSnapshot?.matchState || this.matchState;
+    }
+
     startNextRound() {
+        if (this.nextRoundTimer) {
+            clearTimeout(this.nextRoundTimer);
+            this.nextRoundTimer = null;
+        }
         if (this.matchState.winner) {
             return;
         }
@@ -130,6 +144,8 @@ export class MatchController {
             etherealStep: false,
             smokeBomb: false,
             dragonWrathUsed: false,
+            determinationAvailable: false,
+            determinationSavedState: null,
             etherealStepCharges: 0,
             smokeBombCharges: 0
         };
@@ -180,11 +196,11 @@ export class MatchController {
     }
 
     isRoundActive() {
-        return this.roundState?.status === 'playing';
+        return this.getActiveRoundState()?.status === 'playing';
     }
 
     isRoundBuying() {
-        return this.roundState?.status === 'buying';
+        return this.getActiveRoundState()?.status === 'buying';
     }
 
     purchaseEffect(effectId, player = this.app.currentPlayer) {
@@ -192,11 +208,17 @@ export class MatchController {
             return { success: false, message: '仅可在局前准备阶段购买，开局后无法购买。' };
         }
 
-        // 全局限购：守护巨龙之怒整场 BO3/BO5 每方仅可购买 1 次
+        // 全局限购：整场 BO3/BO5 每方仅可购买 1 次
         if (effectId === 'dragon_wrath') {
             const hasUsedBefore = this.matchState.roundsDragonWrathUsed?.[player] || false;
             if (hasUsedBefore) {
                 return { success: false, message: '守护巨龙之怒整场比赛每方仅可购买 1 次。' };
+            }
+        }
+        if (effectId === 'determination') {
+            const hasBoughtBefore = this.matchState.determinationPurchased?.[player] || false;
+            if (hasBoughtBefore) {
+                return { success: false, message: '决心整场比赛每方仅可购买 1 次。' };
             }
         }
 
@@ -244,6 +266,14 @@ export class MatchController {
             }
             this.matchState.roundsDragonWrathUsed[player] = true;
         }
+        if (effectId === 'determination') {
+            loadout.determinationAvailable = true;
+            loadout.determinationSavedState = null;
+            if (!this.matchState.determinationPurchased) {
+                this.matchState.determinationPurchased = {};
+            }
+            this.matchState.determinationPurchased[player] = true;
+        }
 
         if (this.app?.isGameTestPage && this.isRoundActive() && effectId === 'intl_chess_global') {
             this.applyInternationalChessLoadoutForPlayer(player);
@@ -272,12 +302,12 @@ export class MatchController {
     }
 
     canUsePurchasedEffect(effectId, player = this.app.currentPlayer) {
-        const loadout = this.roundState.loadouts[player];
+        const loadout = this.getActiveRoundState()?.loadouts?.[player];
         return loadout.purchasedEffects.some(item => item.effectId === effectId && !item.used);
     }
 
     consumePurchasedEffect(effectId, player = this.app.currentPlayer) {
-        const loadout = this.roundState.loadouts[player];
+        const loadout = this.getActiveRoundState()?.loadouts?.[player];
         const item = loadout.purchasedEffects.find(entry => entry.effectId === effectId && !entry.used);
         if (item) {
             item.used = true;
@@ -288,9 +318,13 @@ export class MatchController {
 
     onPieceCaptured(capturedPiece, killerPlayer = this.app.currentPlayer) {
         const credits = this.getCaptureCredits(capturedPiece);
-        this.roundState.economies[killerPlayer].credits += credits;
+        const roundState = this.getActiveRoundState();
+        if (!roundState?.economies?.[killerPlayer]) {
+            return;
+        }
+        roundState.economies[killerPlayer].credits += credits;
         if (this.isGraveyardEligible(capturedPiece, killerPlayer)) {
-            this.roundState.economies[killerPlayer].graveyard += 1;
+            roundState.economies[killerPlayer].graveyard += 1;
         }
     }
 
@@ -344,6 +378,8 @@ export class MatchController {
         if (this.app.ui && typeof this.app.ui.renderRoundShop === 'function') {
             this.app.ui.renderRoundShop();
         }
+
+        this.scheduleNextRound();
     }
 
     getRoundShopStatusText() {
@@ -351,7 +387,17 @@ export class MatchController {
     }
 
     getMatchScoreText() {
-        return `比分 ${this.matchState.score.red}:${this.matchState.score.black}，点击 startNextRound() 开启下一局`;
+        return `比分 ${this.matchState.score.red}:${this.matchState.score.black}，5 秒后自动开启下一局`;
+    }
+
+    scheduleNextRound() {
+        if (this.nextRoundTimer) {
+            clearTimeout(this.nextRoundTimer);
+        }
+        this.nextRoundTimer = setTimeout(() => {
+            this.nextRoundTimer = null;
+            this.app.startNextRound();
+        }, 5000);
     }
 
     clearRoundLoadouts() {
@@ -360,19 +406,19 @@ export class MatchController {
     }
 
     getEconomy(player) {
-        return this.roundState.economies[player];
+        return this.getActiveRoundState()?.economies?.[player];
     }
 
     getLoadout(player) {
-        return this.roundState.loadouts[player];
+        return this.getActiveRoundState()?.loadouts?.[player];
     }
 
     getFlipChessStock(player) {
-        return this.roundState.loadouts[player]?.flipChessStock || 0;
+        return this.getActiveRoundState()?.loadouts?.[player]?.flipChessStock || 0;
     }
 
     consumeFlipChessStock(player = this.app.currentPlayer) {
-        const loadout = this.roundState.loadouts[player];
+        const loadout = this.getActiveRoundState()?.loadouts?.[player];
         if (!loadout || loadout.flipChessStock <= 0) {
             return false;
         }
@@ -382,35 +428,47 @@ export class MatchController {
     }
 
     hasGomokuMode(player) {
-        return Boolean(this.roundState.loadouts[player]?.gomokuMode);
+        return Boolean(this.getActiveRoundState()?.loadouts?.[player]?.gomokuMode);
     }
 
     hasSkeletonRevival(player) {
-        return Boolean(this.roundState.loadouts[player]?.skeletonRevival);
+        return Boolean(this.getActiveRoundState()?.loadouts?.[player]?.skeletonRevival);
     }
 
     hasEtherealStep(player) {
-        return Boolean(this.roundState.loadouts[player]?.etherealStep);
+        return Boolean(this.getActiveRoundState()?.loadouts?.[player]?.etherealStep);
     }
 
     hasSmokeBomb(player) {
-        return Boolean(this.roundState.loadouts[player]?.smokeBomb);
+        return Boolean(this.getActiveRoundState()?.loadouts?.[player]?.smokeBomb);
     }
 
     hasDragonWrath(player) {
-        return Boolean(this.roundState.loadouts[player]?.dragonWrathUsed);
+        return Boolean(this.getActiveRoundState()?.loadouts?.[player]?.dragonWrathUsed);
+    }
+
+    hasDetermination(player) {
+        return Boolean(this.getActiveRoundState()?.loadouts?.[player]?.determinationAvailable);
+    }
+
+    hasDeterminationSave(player) {
+        return Boolean(this.getActiveRoundState()?.loadouts?.[player]?.determinationSavedState);
+    }
+
+    getDeterminationSave(player) {
+        return this.getActiveRoundState()?.loadouts?.[player]?.determinationSavedState || null;
     }
 
     getEtherealStepCharges(player) {
-        return this.roundState.loadouts[player]?.etherealStepCharges || 0;
+        return this.getActiveRoundState()?.loadouts?.[player]?.etherealStepCharges || 0;
     }
 
     getSmokeBombCharges(player) {
-        return this.roundState.loadouts[player]?.smokeBombCharges || 0;
+        return this.getActiveRoundState()?.loadouts?.[player]?.smokeBombCharges || 0;
     }
 
     consumeEtherealStepCharge(player = this.app.currentPlayer) {
-        const loadout = this.roundState.loadouts[player];
+        const loadout = this.getActiveRoundState()?.loadouts?.[player];
         if (!loadout || (loadout.etherealStepCharges || 0) <= 0) {
             return false;
         }
@@ -419,7 +477,7 @@ export class MatchController {
     }
 
     consumeSmokeBombCharge(player = this.app.currentPlayer) {
-        const loadout = this.roundState.loadouts[player];
+        const loadout = this.getActiveRoundState()?.loadouts?.[player];
         if (!loadout || (loadout.smokeBombCharges || 0) <= 0) {
             return false;
         }
@@ -428,7 +486,7 @@ export class MatchController {
     }
 
     consumeDragonWrath(player = this.app.currentPlayer) {
-        const loadout = this.roundState.loadouts[player];
+        const loadout = this.getActiveRoundState()?.loadouts?.[player];
         if (!loadout || !loadout.dragonWrathUsed) {
             return false;
         }
@@ -436,8 +494,27 @@ export class MatchController {
         return true;
     }
 
+    saveDeterminationSnapshot(player = this.app.currentPlayer, snapshot = null) {
+        const loadout = this.getActiveRoundState()?.loadouts?.[player];
+        if (!loadout || !loadout.determinationAvailable) {
+            return false;
+        }
+        loadout.determinationSavedState = snapshot ? JSON.parse(JSON.stringify(snapshot)) : null;
+        return true;
+    }
+
+    consumeDetermination(player = this.app.currentPlayer) {
+        const loadout = this.getActiveRoundState()?.loadouts?.[player];
+        if (!loadout || !loadout.determinationAvailable) {
+            return false;
+        }
+        loadout.determinationAvailable = false;
+        loadout.determinationSavedState = null;
+        return true;
+    }
+
     spendGraveyard(player = this.app.currentPlayer, amount = 1) {
-        const economy = this.roundState.economies[player];
+        const economy = this.getActiveRoundState()?.economies?.[player];
         const cost = Math.max(0, amount);
         if (!economy || economy.graveyard < cost) {
             return false;

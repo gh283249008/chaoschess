@@ -188,6 +188,7 @@ export class GameServer {
             }
         });
 
+        room.nextSeq();
         this.pushRoomState(roomId, SYNC_REASONS.ROOM_CREATED);
     }
 
@@ -217,6 +218,7 @@ export class GameServer {
             }
         });
 
+        room.nextSeq();
         this.pushRoomState(roomId, SYNC_REASONS.ROOM_JOINED);
     }
 
@@ -233,6 +235,7 @@ export class GameServer {
             if (room.status === 'finished') {
                 this.rooms.delete(roomId);
             } else {
+                room.nextSeq();
                 this.pushRoomState(roomId, SYNC_REASONS.PLAYER_LEFT);
             }
         }
@@ -477,7 +480,7 @@ export class GameServer {
         }
 
         if (action.kind === 'SYNC_STATE') {
-            if (!action.boardState || !action.state || !action.state.currentPlayer) {
+            if (!action.boardState || !action.state || !action.state.currentPlayer || !action.roundState || !action.matchState) {
                 return { success: false, code: ERROR_CODES.INVALID_ACTION, reason: '缺少同步状态数据', player };
             }
         }
@@ -619,6 +622,7 @@ export class GameServer {
             room.removePlayer(clientId);
             client.roomId = null;
             client.color = null;
+            this.clients.delete(clientId);
             if (room.status === 'finished') {
                 this.rooms.delete(room.id);
             } else {

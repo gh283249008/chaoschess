@@ -28,7 +28,7 @@ export class NetworkClient {
 
     loadSession() {
         try {
-            const raw = localStorage.getItem('chaoschess:session');
+            const raw = sessionStorage.getItem('chaoschess:session');
             if (!raw) return;
             const parsed = JSON.parse(raw);
             if (parsed && typeof parsed === 'object') {
@@ -41,11 +41,17 @@ export class NetworkClient {
         } catch {
             // ignore invalid cache
         }
+
+        try {
+            localStorage.removeItem('chaoschess:session');
+        } catch {
+            // ignore storage errors
+        }
     }
 
     persistSession() {
         try {
-            localStorage.setItem('chaoschess:session', JSON.stringify(this.session));
+            sessionStorage.setItem('chaoschess:session', JSON.stringify(this.session));
         } catch {
             // ignore storage errors
         }

@@ -11,6 +11,7 @@ const SHOP_ITEMS = [
     { id: 'ethereal_step', category: 'special', name: '以太步', desc: '本局解锁以太步：选择己方棋子，再选一个己方锚点棋子，将前者移动到锚点周围8格任一空位。不能吃子。', actionConsumesMove: true, price: 240, disabled: false },
     { id: 'smoke_bomb', category: 'special', name: '烟雾弹', desc: '本局解锁烟雾弹：选择棋盘目标点，生成 3x3 烟雾区（效果与扑克同花烟雾弹一致）。', actionConsumesMove: true, price: 220, disabled: false },
     { id: 'dragon_wrath', category: 'special', name: '守护巨龙之怒', desc: '整场 BO3/BO5 每方仅可购买 1 次。使用后增加一次额外的走棋次数。', actionConsumesMove: false, price: 400, disabled: false },
+    { id: 'determination', category: 'special', name: '决心', desc: '整场 BO3/BO5 每方仅可购买 1 次。首次使用存档，第二次在本局任意时点读档并切到对方回合。无法回溯整场限次技能。', actionConsumesMove: false, price: 460, disabled: false },
     
 ];
 
@@ -61,6 +62,7 @@ const SLOT_ICONS = {
     ethereal_step: '🌀',
     smoke_bomb: '🌫️',
     dragon_wrath: '🐉',
+    determination: '💾',
     intl_chess_global: '♞',
     gomoku_mode: '⚫'
 };
@@ -174,6 +176,12 @@ export class AppUIController {
         const dragonWrathUsed = remoteSnapshot
             ? Boolean(roundState.loadouts[currentPlayer]?.dragonWrathUsed)
             : Boolean(loadout.dragonWrathUsed);
+        const determinationAvailable = remoteSnapshot
+            ? Boolean(roundState.loadouts[currentPlayer]?.determinationAvailable)
+            : Boolean(loadout.determinationAvailable);
+        const determinationSaved = remoteSnapshot
+            ? Boolean(roundState.loadouts[currentPlayer]?.determinationSavedState)
+            : Boolean(loadout.determinationSavedState);
         const graveyard = remoteSnapshot
             ? (roundState.economies?.[currentPlayer]?.graveyard || 0)
             : (economy?.graveyard || 0);
@@ -196,7 +204,6 @@ export class AppUIController {
             </div>
             <div style="display:flex; gap:8px;">
                 <button id="round-begin-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:pointer;">开始本局</button>
-                <button id="round-next-btn" style="padding:7px 12px; border:none; border-radius:6px; background:#374151; color:#fff; cursor:pointer;">下一局</button>
             </div>
         `;
         panel.appendChild(header);
@@ -263,7 +270,6 @@ export class AppUIController {
         });
 
         const beginBtn = document.getElementById('round-begin-btn');
-        const nextBtn = document.getElementById('round-next-btn');
         if (remoteSnapshot) {
             beginBtn.style.display = 'none';
         }
@@ -282,17 +288,6 @@ export class AppUIController {
                     panel.style.display = 'none';
                 }
             }
-        };
-
-        nextBtn.disabled = roundState.status !== 'ended' || isFinished;
-        if (nextBtn.disabled) {
-            nextBtn.style.opacity = '0.55';
-            nextBtn.style.cursor = 'not-allowed';
-        }
-        nextBtn.onclick = () => {
-            this.app.startNextRound();
-            this.renderRoundShop();
-            this.renderItemSlots();
         };
 
         if (this.app?.isGameTestPage) {
@@ -316,16 +311,30 @@ export class AppUIController {
         const matchView = document.getElementById('match-view');
         if (!matchView) return;
 
-        let slotPanel = document.getElementById('item-slot-panel');
-        if (!slotPanel) {
-            slotPanel = document.createElement('div');
-            slotPanel.id = 'item-slot-panel';
-            slotPanel.style.cssText = 'display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:8px; margin:10px auto 0 auto; width:min(500px, 100%);';
-            const statusEl = document.getElementById('status');
-            if (statusEl) {
-                matchView.insertBefore(slotPanel, statusEl);
+        let topSlotPanel = document.getElementById('item-slot-panel-top');
+        let bottomSlotPanel = document.getElementById('item-slot-panel-bottom');
+        const canvasEl = document.getElementById('canvas');
+        const statusEl = document.getElementById('status');
+
+        if (!topSlotPanel) {
+            topSlotPanel = document.createElement('div');
+            topSlotPanel.id = 'item-slot-panel-top';
+            topSlotPanel.style.cssText = 'display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:8px; margin:0 auto 10px auto; width:min(500px, 100%);';
+            if (canvasEl) {
+                matchView.insertBefore(topSlotPanel, canvasEl);
             } else {
-                matchView.appendChild(slotPanel);
+                matchView.appendChild(topSlotPanel);
+            }
+        }
+
+        if (!bottomSlotPanel) {
+            bottomSlotPanel = document.createElement('div');
+            bottomSlotPanel.id = 'item-slot-panel-bottom';
+            bottomSlotPanel.style.cssText = 'display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:8px; margin:10px auto 0 auto; width:min(500px, 100%);';
+            if (statusEl) {
+                matchView.insertBefore(bottomSlotPanel, statusEl);
+            } else {
+                matchView.appendChild(bottomSlotPanel);
             }
         }
 
@@ -333,128 +342,155 @@ export class AppUIController {
         const remoteSnapshot = onlineState?.roomSnapshot || null;
         const roundState = remoteSnapshot?.roundState || this.app.getRoundState();
         if (!roundState) {
-            slotPanel.innerHTML = '';
+            topSlotPanel.innerHTML = '';
+            bottomSlotPanel.innerHTML = '';
             return;
         }
 
-        const currentPlayer = remoteSnapshot ? (onlineState.color || this.app.currentPlayer) : this.app.currentPlayer;
-        const loadout = remoteSnapshot
-            ? { purchasedEffects: (roundState.loadouts[currentPlayer]?.purchasedEffects || []).map(effectId => ({ effectId })) }
-            : this.app.matchController.getLoadout(currentPlayer);
-        const purchasedEffects = remoteSnapshot
-            ? (roundState.loadouts[currentPlayer]?.purchasedEffects || []).map(effectId => ({ effectId }))
-            : (loadout.purchasedEffects || []);
-
-        const flipChessStock = remoteSnapshot
-            ? (roundState.loadouts[currentPlayer]?.flipChessStock || 0)
-            : (loadout.flipChessStock || 0);
-        const etherealStepCharges = remoteSnapshot
-            ? (roundState.loadouts[currentPlayer]?.etherealStepCharges || 0)
-            : (loadout.etherealStepCharges || 0);
-        const smokeBombCharges = remoteSnapshot
-            ? (roundState.loadouts[currentPlayer]?.smokeBombCharges || 0)
-            : (loadout.smokeBombCharges || 0);
-        const dragonWrathUsed = remoteSnapshot
-            ? Boolean(roundState.loadouts[currentPlayer]?.dragonWrathUsed)
-            : Boolean(loadout.dragonWrathUsed);
-        const graveyard = remoteSnapshot
-            ? (roundState.economies?.[currentPlayer]?.graveyard || 0)
-            : (this.app.matchController.getEconomy(currentPlayer)?.graveyard || 0);
-
         const isRoundActive = remoteSnapshot ? roundState.status === 'playing' : this.app.matchController?.isRoundActive?.();
         const getItemByEffectId = (effectId) => SHOP_ITEMS.find(item => item.id === effectId);
+        const localPlayer = onlineState?.color || this.app.currentPlayer;
+        const topPlayer = localPlayer === 'black' ? 'red' : 'black';
+        const bottomPlayer = localPlayer === 'black' ? 'black' : 'red';
+        const topLabel = topPlayer === 'red' ? '红方' : '黑方';
+        const bottomLabel = bottomPlayer === 'red' ? '红方' : '黑方';
 
-        slotPanel.innerHTML = '';
-        for (let i = 0; i < 3; i++) {
-            const slot = document.createElement('div');
-            slot.style.cssText = 'border:1px dashed #d1d5db; border-radius:8px; padding:8px; min-height:54px; background:#fff;';
-            const effectEntry = purchasedEffects[i];
+        const buildPlayerSection = (player, label) => {
+            const loadout = remoteSnapshot
+                ? (roundState.loadouts[player] || { purchasedEffects: [] })
+                : this.app.matchController.getLoadout(player);
+            const purchasedEffects = remoteSnapshot
+                ? (roundState.loadouts[player]?.purchasedEffects || []).map(effectId => ({ effectId }))
+                : (loadout.purchasedEffects || []);
+            const flipChessStock = remoteSnapshot
+                ? (roundState.loadouts[player]?.flipChessStock || 0)
+                : (loadout.flipChessStock || 0);
+            const etherealStepCharges = remoteSnapshot
+                ? (roundState.loadouts[player]?.etherealStepCharges || 0)
+                : (loadout.etherealStepCharges || 0);
+            const smokeBombCharges = remoteSnapshot
+                ? (roundState.loadouts[player]?.smokeBombCharges || 0)
+                : (loadout.smokeBombCharges || 0);
+            const dragonWrathUsed = remoteSnapshot
+                ? Boolean(roundState.loadouts[player]?.dragonWrathUsed)
+                : Boolean(loadout.dragonWrathUsed);
+            const determinationAvailable = remoteSnapshot
+                ? Boolean(roundState.loadouts[player]?.determinationAvailable)
+                : Boolean(loadout.determinationAvailable);
+            const determinationSaved = remoteSnapshot
+                ? Boolean(roundState.loadouts[player]?.determinationSavedState)
+                : Boolean(loadout.determinationSavedState);
+            const graveyard = remoteSnapshot
+                ? (roundState.economies?.[player]?.graveyard || 0)
+                : (this.app.matchController.getEconomy(player)?.graveyard || 0);
+            const canInteract = !remoteSnapshot || player === localPlayer;
+            const slots = [];
 
-            if (!effectEntry) {
-                slot.innerHTML = '<div style="font-size:12px; color:#9ca3af; text-align:center; padding-top:10px;">空槽位</div>';
-                slotPanel.appendChild(slot);
-                continue;
-            }
+            for (let i = 0; i < 3; i++) {
+                const slot = document.createElement('div');
+                slot.style.cssText = 'border:1px dashed #d1d5db; border-radius:8px; padding:8px; min-height:54px; background:#fff;';
+                const effectEntry = purchasedEffects[i];
 
-            const effectId = effectEntry.effectId;
-            const item = getItemByEffectId(effectId);
-                const isActiveItem = effectId === 'ethereal_step' || effectId === 'smoke_bomb' || effectId === 'flip_chess_pair' || effectId === 'skeleton_revival' || effectId === 'dragon_wrath';
-            const desc = `${item?.desc || effectId}${this.getMoveDeclarationText(item?.actionConsumesMove ?? false)}`;
-
-            let charges = 0;
-            if (effectId === 'ethereal_step') charges = etherealStepCharges;
-            if (effectId === 'smoke_bomb') charges = smokeBombCharges;
-            if (effectId === 'flip_chess_pair') charges = flipChessStock;
-            if (effectId === 'skeleton_revival') charges = graveyard;
-            if (effectId === 'dragon_wrath') charges = dragonWrathUsed ? 1 : 0;
-            const icon = SLOT_ICONS[effectId] || '🧩';
-
-            const btn = document.createElement('button');
-            btn.textContent = `${icon} ${charges}`;
-            btn.title = desc;
-            btn.style.cssText = 'width:100%; padding:8px 6px; border:none; border-radius:6px; font-size:16px; font-weight:700; color:#fff;';
-
-            if (!isActiveItem) {
-                btn.style.background = '#6b7280';
-                btn.style.cursor = 'help';
-                btn.onclick = () => {
-                    this.app.showNotification(`${item?.name || effectId}：被动道具，购买后本局生效`, 'info');
-                };
-            } else {
-                let canUse = !remoteSnapshot
-                    && isRoundActive
-                    && this.app.getCurrentTurnMovesLeft() > 0;
-
-                if (effectId === 'ethereal_step' || effectId === 'smoke_bomb') {
-                    canUse = canUse && charges > 0;
-                }
-                if (effectId === 'flip_chess_pair') {
-                    canUse = canUse && charges > 0;
-                }
-                if (effectId === 'skeleton_revival') {
-                    canUse = canUse && this.app.matchController?.hasSkeletonRevival?.(currentPlayer);
-                }
-                if (effectId === 'dragon_wrath') {
-                    canUse = canUse && charges > 0;
+                if (!effectEntry) {
+                    slot.innerHTML = `<div style="font-size:12px; color:#9ca3af; text-align:center; padding-top:10px;">${i === 0 ? `${label} 空槽位` : '空槽位'}</div>`;
+                    slots.push(slot);
+                    continue;
                 }
 
-                if (effectId === 'ethereal_step') btn.style.background = '#7c3aed';
-                if (effectId === 'smoke_bomb') btn.style.background = '#0ea5a5';
-                if (effectId === 'flip_chess_pair') btn.style.background = '#2563eb';
-                if (effectId === 'skeleton_revival') btn.style.background = '#7c2d12';
-                if (effectId === 'dragon_wrath') btn.style.background = '#b45309';
+                const effectId = effectEntry.effectId;
+                const item = getItemByEffectId(effectId);
+                const isActiveItem = effectId === 'ethereal_step' || effectId === 'smoke_bomb' || effectId === 'flip_chess_pair' || effectId === 'skeleton_revival' || effectId === 'dragon_wrath' || effectId === 'determination';
+                const desc = `${item?.desc || effectId}${this.getMoveDeclarationText(item?.actionConsumesMove ?? false)}`;
 
-                if (!canUse) {
-                    btn.disabled = true;
-                    btn.style.opacity = '0.55';
-                    btn.style.cursor = 'not-allowed';
-                } else {
-                    btn.style.cursor = 'pointer';
+                let charges = 0;
+                let chargeText = '';
+                if (effectId === 'ethereal_step') charges = etherealStepCharges;
+                if (effectId === 'smoke_bomb') charges = smokeBombCharges;
+                if (effectId === 'flip_chess_pair') charges = flipChessStock;
+                if (effectId === 'skeleton_revival') charges = graveyard;
+                if (effectId === 'dragon_wrath') charges = dragonWrathUsed ? 1 : 0;
+                if (effectId === 'determination') chargeText = determinationAvailable ? (determinationSaved ? '读' : '存') : '0';
+                const icon = SLOT_ICONS[effectId] || '🧩';
+
+                const btn = document.createElement('button');
+                btn.textContent = `${icon} ${effectId === 'determination' ? chargeText : charges}`;
+                btn.title = desc;
+                btn.style.cssText = 'width:100%; padding:8px 6px; border:none; border-radius:6px; font-size:16px; font-weight:700; color:#fff;';
+
+                if (!isActiveItem) {
+                    btn.style.background = '#6b7280';
+                    btn.style.cursor = 'help';
                     btn.onclick = () => {
-                        if (effectId === 'ethereal_step') this.app.startEtherealStep();
-                        if (effectId === 'smoke_bomb') this.app.startSmokeBomb();
-                        if (effectId === 'flip_chess_pair') {
-                            this.app.gameMode = 'place';
-                            this.app.setPlaceModePieceType('flip');
-                            this.app.showNotification('已切换为翻转棋落子模式', 'info');
-                        }
-                        if (effectId === 'skeleton_revival') {
-                            this.app.gameMode = 'place';
-                            this.app.setPlaceModePieceType('skeleton');
-                            this.app.showNotification('已切换为骷髅复苏落子模式', 'info');
-                        }
-                        if (effectId === 'dragon_wrath') {
-                            this.app.useDragonWrath();
-                        }
-                        this.app.ui?.updateModeUI?.(this.app.gameMode);
-                        this.app.render?.();
+                        this.app.showNotification(`${item?.name || effectId}：被动道具，购买后本局生效`, 'info');
                     };
+                } else {
+                    let canUse = canInteract && isRoundActive;
+                    if (effectId === 'ethereal_step' || effectId === 'smoke_bomb') {
+                        canUse = canUse && charges > 0 && this.app.getCurrentTurnMovesLeft() > 0;
+                    }
+                    if (effectId === 'flip_chess_pair') {
+                        canUse = canUse && charges > 0 && this.app.getCurrentTurnMovesLeft() > 0;
+                    }
+                    if (effectId === 'skeleton_revival') {
+                        canUse = canUse && this.app.matchController?.hasSkeletonRevival?.(player) && this.app.getCurrentTurnMovesLeft() > 0;
+                    }
+                    if (effectId === 'dragon_wrath') {
+                        canUse = canUse && charges > 0;
+                    }
+                    if (effectId === 'determination') {
+                        canUse = canUse && determinationAvailable;
+                    }
+
+                    if (effectId === 'ethereal_step') btn.style.background = '#7c3aed';
+                    if (effectId === 'smoke_bomb') btn.style.background = '#0ea5a5';
+                    if (effectId === 'flip_chess_pair') btn.style.background = '#2563eb';
+                    if (effectId === 'skeleton_revival') btn.style.background = '#7c2d12';
+                    if (effectId === 'dragon_wrath') btn.style.background = '#b45309';
+                    if (effectId === 'determination') btn.style.background = '#dc2626';
+
+                    if (!canUse) {
+                        btn.disabled = true;
+                        btn.style.opacity = '0.55';
+                        btn.style.cursor = 'not-allowed';
+                    } else {
+                        btn.style.cursor = 'pointer';
+                        btn.onclick = () => {
+                            if (effectId === 'ethereal_step') this.app.startEtherealStep();
+                            if (effectId === 'smoke_bomb') this.app.startSmokeBomb();
+                            if (effectId === 'flip_chess_pair') {
+                                this.app.gameMode = 'place';
+                                this.app.setPlaceModePieceType('flip');
+                                this.app.showNotification('已切换为翻转棋落子模式', 'info');
+                            }
+                            if (effectId === 'skeleton_revival') {
+                                this.app.gameMode = 'place';
+                                this.app.setPlaceModePieceType('skeleton');
+                                this.app.showNotification('已切换为骷髅复苏落子模式', 'info');
+                            }
+                            if (effectId === 'dragon_wrath') {
+                                this.app.useDragonWrath();
+                            }
+                            if (effectId === 'determination') {
+                                this.app.useDetermination(player);
+                            }
+                            this.app.ui?.updateModeUI?.(this.app.gameMode);
+                            this.app.render?.();
+                        };
+                    }
                 }
+
+                slot.appendChild(btn);
+                slots.push(slot);
             }
 
-            slot.appendChild(btn);
-            slotPanel.appendChild(slot);
-        }
+            return slots;
+        };
+
+        topSlotPanel.innerHTML = '';
+        bottomSlotPanel.innerHTML = '';
+
+        buildPlayerSection(topPlayer, topLabel).forEach(slot => topSlotPanel.appendChild(slot));
+        buildPlayerSection(bottomPlayer, bottomLabel).forEach(slot => bottomSlotPanel.appendChild(slot));
     }
 
     renderOnlinePanel(onlineState) {

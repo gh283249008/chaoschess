@@ -53,6 +53,7 @@ class ChaosChessApp {
             red: 1,
             black: 1
         };
+        this.itemSlotOwner = 'red';
         this.applyingRemoteAction = false;
 
         this.init();
@@ -106,7 +107,9 @@ class ChaosChessApp {
             '当前局未开始，无法出牌。',
             '悔棋功能暂未实现',
             '无效目标，请重新选择！',
-            '守护巨龙之怒已生效（+1 走棋次数）'
+            '守护巨龙之怒已生效（+1 走棋次数）',
+            '决心已存档',
+            '决心已读档，轮到对方行动'
         ]);
 
         if (exact.has(message)) {
@@ -251,6 +254,7 @@ class ChaosChessApp {
     // 切换玩家并处理状态效果
     switchPlayer() {
         this.turnController.switchPlayer();
+        this.itemSlotOwner = this.currentPlayer;
     }
 
     getCurrentTurnMovesLeft() {
@@ -266,6 +270,24 @@ class ChaosChessApp {
         this.turnBudget[player] = Math.max(0, next);
     }
 
+    getSyncedRoundState() {
+        const snapshot = this.onlineController?.getState?.().roomSnapshot;
+        return snapshot?.roundState || this.matchController?.roundState || null;
+    }
+
+    getSyncedMatchState() {
+        const snapshot = this.onlineController?.getState?.().roomSnapshot;
+        return snapshot?.matchState || this.matchController?.matchState || null;
+    }
+
+    getSyncedLoadout(player = this.currentPlayer) {
+        return this.getSyncedRoundState()?.loadouts?.[player] || null;
+    }
+
+    getSyncedEconomy(player = this.currentPlayer) {
+        return this.getSyncedRoundState()?.economies?.[player] || null;
+    }
+
     consumeMoveStep(stepCount = 1) {
         const cost = Math.max(0, stepCount);
         this.setCurrentTurnMovesLeft(this.getCurrentTurnMovesLeft() - cost);
@@ -274,6 +296,16 @@ class ChaosChessApp {
 
     resetTurnBudget(player, value = 1) {
         this.turnBudget[player] = Math.max(0, value);
+    }
+
+    getItemSlotOwner() {
+        return this.itemSlotOwner || this.currentPlayer;
+    }
+
+    setItemSlotOwner(player) {
+        if (player === 'red' || player === 'black') {
+            this.itemSlotOwner = player;
+        }
     }
 
     ensureTurnBudgetReady() {
@@ -393,11 +425,12 @@ class ChaosChessApp {
             this.showNotification('当前局未开始，无法使用烟雾弹', 'warning');
             return false;
         }
-        if (!this.matchController?.hasSmokeBomb(this.currentPlayer)) {
+        const loadout = this.getSyncedLoadout(this.currentPlayer);
+        if (!loadout?.smokeBomb) {
             this.showNotification('未购买烟雾弹，本局不可使用', 'warning');
             return false;
         }
-        if ((this.matchController.getSmokeBombCharges(this.currentPlayer) || 0) <= 0) {
+        if ((loadout.smokeBombCharges || 0) <= 0) {
             this.showNotification('烟雾弹本局次数已用尽', 'warning');
             return false;
         }
@@ -433,6 +466,9 @@ class ChaosChessApp {
         this.consumeMoveStep(1);
         this.render();
         this.ui?.renderRoundShop?.();
+        if (this.onlineController.getState().roomSnapshot && !this.applyingRemoteAction) {
+            this.sendStateSyncAction();
+        }
         return true;
     }
 
@@ -441,11 +477,12 @@ class ChaosChessApp {
             this.showNotification('当前局未开始，无法使用以太步', 'warning');
             return false;
         }
-        if (!this.matchController?.hasEtherealStep(this.currentPlayer)) {
+        const loadout = this.getSyncedLoadout(this.currentPlayer);
+        if (!loadout?.etherealStep) {
             this.showNotification('未购买以太步，本局不可使用', 'warning');
             return false;
         }
-        if ((this.matchController.getEtherealStepCharges(this.currentPlayer) || 0) <= 0) {
+        if ((loadout.etherealStepCharges || 0) <= 0) {
             this.showNotification('以太步本局次数已用尽', 'warning');
             return false;
         }
@@ -514,6 +551,9 @@ class ChaosChessApp {
             this.consumeMoveStep(1);
             this.render();
             this.ui?.renderRoundShop?.();
+            if (this.onlineController.getState().roomSnapshot && !this.applyingRemoteAction) {
+                this.sendStateSyncAction();
+            }
             return true;
         }
 
@@ -530,11 +570,75 @@ class ChaosChessApp {
     }
 
     purchaseEffect(effectId) {
-        if (this.onlineController.getState().roomSnapshot && this.onlineController.getState().roomSnapshot.status !== 'waiting') {
+        const snapshot = this.onlineController.getState().roomSnapshot;
+        if (snapshot && snapshot.roundState?.status === 'buying') {
             this.onlineController.sendPlayerAction({ kind: 'PURCHASE_EFFECT', effectId });
             return { success: true, message: '购买请求已发送到服务器' };
         }
         return this.matchController.purchaseEffect(effectId);
+    }
+
+    createDeterminationSnapshot(player) {
+        const preserveMatchOnlyFlags = {
+            red: {
+                dragonWrathUsed: this.matchController.getLoadout('red')?.dragonWrathUsed || false,
+                determinationAvailable: this.matchController.getLoadout('red')?.determinationAvailable || false,
+                determinationSavedState: this.matchController.getLoadout('red')?.determinationSavedState || null
+            },
+            black: {
+                dragonWrathUsed: this.matchController.getLoadout('black')?.dragonWrathUsed || false,
+                determinationAvailable: this.matchController.getLoadout('black')?.determinationAvailable || false,
+                determinationSavedState: this.matchController.getLoadout('black')?.determinationSavedState || null
+            }
+        };
+
+        return {
+            owner: player,
+            boardState: this.board.getState(),
+            currentPlayer: this.currentPlayer,
+            gameMode: this.gameMode,
+            placeModePieceType: this.placeModePieceType,
+            selectedPiece: null,
+            waitingForTarget: null,
+            riverBlockedTurns: this.riverBlockedTurns || 0,
+            turnBudget: { ...this.turnBudget },
+            roundState: JSON.parse(JSON.stringify(this.matchController.roundState)),
+            preserveMatchOnlyFlags
+        };
+    }
+
+    restoreDeterminationSnapshot(snapshot) {
+        if (!snapshot) {
+            return false;
+        }
+
+        this.board.setState(snapshot.boardState);
+        this.matchController.roundState = JSON.parse(JSON.stringify(snapshot.roundState));
+
+        ['red', 'black'].forEach(player => {
+            const flags = snapshot.preserveMatchOnlyFlags?.[player];
+            if (!flags || !this.matchController.roundState?.loadouts?.[player]) {
+                return;
+            }
+            this.matchController.roundState.loadouts[player].dragonWrathUsed = flags.dragonWrathUsed;
+            this.matchController.roundState.loadouts[player].determinationAvailable = flags.determinationAvailable;
+            this.matchController.roundState.loadouts[player].determinationSavedState = flags.determinationSavedState;
+        });
+
+        const owner = snapshot.owner;
+        const opponent = owner === 'red' ? 'black' : 'red';
+        this.currentPlayer = opponent;
+        this.itemSlotOwner = owner;
+        this.gameMode = snapshot.gameMode || 'move';
+        this.placeModePieceType = snapshot.placeModePieceType || 'go';
+        this.selectedPiece = null;
+        this.waitingForTarget = null;
+        this.riverBlockedTurns = snapshot.riverBlockedTurns || 0;
+        this.turnBudget = {
+            red: snapshot.turnBudget?.red ?? this.turnBudget.red,
+            black: snapshot.turnBudget?.black ?? this.turnBudget.black
+        };
+        return true;
     }
 
     startNextRound() {
@@ -542,6 +646,7 @@ class ChaosChessApp {
             this.onlineController.sendPlayerAction({ kind: 'NEXT_ROUND' });
             return;
         }
+        this.itemSlotOwner = 'red';
         this.matchController.startNextRound();
     }
 
@@ -585,16 +690,21 @@ class ChaosChessApp {
     }
 
     sendStateSyncAction() {
+        const syncedRoundState = this.getSyncedRoundState();
+        const syncedMatchState = this.getSyncedMatchState();
         this.onlineController.sendPlayerAction({
             kind: 'SYNC_STATE',
             boardState: this.board.getState(),
+            roundState: syncedRoundState,
+            matchState: syncedMatchState,
             state: {
                 currentPlayer: this.currentPlayer,
                 gameMode: this.gameMode,
                 placeModePieceType: this.placeModePieceType,
                 riverBlockedTurns: this.riverBlockedTurns || 0,
                 turnBudget: { ...this.turnBudget },
-                waitingForTarget: this.waitingForTarget
+                waitingForTarget: this.waitingForTarget,
+                itemSlotOwner: this.itemSlotOwner
             }
         });
     }
@@ -612,6 +722,7 @@ class ChaosChessApp {
                 red: sharedState.turnBudget?.red ?? this.turnBudget.red,
                 black: sharedState.turnBudget?.black ?? this.turnBudget.black
             };
+            this.itemSlotOwner = sharedState.itemSlotOwner || this.itemSlotOwner;
             this.selectedPiece = null;
             this.waitingForTarget = sharedState.waitingForTarget || null;
         } finally {
@@ -665,12 +776,54 @@ class ChaosChessApp {
         this.onlineController.refreshRooms();
     }
 
+    useDetermination(player = this.getItemSlotOwner()) {
+        if (!this.matchController?.isRoundActive()) {
+            this.showNotification('当前局未开始，无法使用决心', 'warning');
+            return false;
+        }
+        const loadout = this.getSyncedLoadout(player);
+        if (!loadout?.determinationAvailable) {
+            this.showNotification('未购买决心，本局不可使用', 'warning');
+            return false;
+        }
+
+        const existingSave = loadout?.determinationSavedState || null;
+        if (!existingSave) {
+            const snapshot = this.createDeterminationSnapshot(player);
+            this.matchController.saveDeterminationSnapshot(player, snapshot);
+            this.setItemSlotOwner(player);
+            this.showNotification('决心已存档', 'success');
+            this.render();
+            this.ui?.renderRoundShop?.();
+            this.ui?.renderItemSlots?.();
+            if (this.onlineController.getState().roomSnapshot && !this.applyingRemoteAction) {
+                this.sendStateSyncAction();
+            }
+            return true;
+        }
+
+        this.restoreDeterminationSnapshot(existingSave);
+        if (!this.matchController.consumeDetermination(player)) {
+            this.showNotification('决心已不可用', 'warning');
+            return false;
+        }
+        this.showNotification('决心已读档，轮到对方行动', 'success');
+        this.render();
+        this.ui?.renderRoundShop?.();
+        this.ui?.renderItemSlots?.();
+        if (this.onlineController.getState().roomSnapshot && !this.applyingRemoteAction) {
+            this.sendStateSyncAction();
+        }
+        return true;
+    }
+
     useDragonWrath() {
         if (!this.matchController?.isRoundActive()) {
             this.showNotification('当前局未开始，无法使用守护巨龙之怒', 'warning');
             return false;
         }
-        if (!this.matchController?.hasDragonWrath(this.currentPlayer)) {
+        const loadout = this.getSyncedLoadout(this.currentPlayer);
+        if (!loadout?.dragonWrathUsed) {
             this.showNotification('未购买守护巨龙之怒，本局不可使用', 'warning');
             return false;
         }
@@ -682,6 +835,9 @@ class ChaosChessApp {
         this.render();
         this.ui?.renderRoundShop?.();
         this.ui?.renderItemSlots?.();
+        if (this.onlineController.getState().roomSnapshot && !this.applyingRemoteAction) {
+            this.sendStateSyncAction();
+        }
         return true;
     }
 
@@ -700,7 +856,8 @@ class ChaosChessApp {
             currentPlayer: this.currentPlayer,
             effectManager: this.effectManager,
             placeModePieceType: this.placeModePieceType,
-            waitingForTarget: this.waitingForTarget
+            waitingForTarget: this.waitingForTarget,
+            viewerPlayer: perspective
         });
     }
 }

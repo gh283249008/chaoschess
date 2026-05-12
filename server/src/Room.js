@@ -1,6 +1,37 @@
 const PLAYER_COLORS = ['red', 'black'];
 const PROTOCOL_VERSION = '1';
 
+const EFFECT_PRICES = {
+    intl_chess_global: 360,
+    flip_chess_pair: 280,
+    gomoku_mode: 300,
+    skeleton_revival: 260,
+    ethereal_step: 240,
+    smoke_bomb: 220,
+    dragon_wrath: 400,
+    determination: 460
+};
+
+function createEconomy() {
+    return { credits: 800, lossStreak: 0, graveyard: 0 };
+}
+
+function createEmptyLoadout() {
+    return {
+        purchasedEffects: [],
+        flipChessStock: 0,
+        gomokuMode: false,
+        skeletonRevival: false,
+        etherealStep: false,
+        smokeBomb: false,
+        dragonWrathUsed: false,
+        determinationAvailable: false,
+        determinationSavedState: null,
+        etherealStepCharges: 0,
+        smokeBombCharges: 0
+    };
+}
+
 export class Room {
     constructor(id, hostPlayer) {
         this.id = id;
@@ -20,7 +51,9 @@ export class Room {
             score: { red: 0, black: 0 },
             currentRound: 0,
             targetWins: 2,
-            winner: null
+            winner: null,
+            roundsDragonWrathUsed: { red: false, black: false },
+            determinationPurchased: { red: false, black: false }
         };
         this.roundState = {
             status: 'waiting',
@@ -30,12 +63,12 @@ export class Room {
             winner: null,
             reason: null,
             economies: {
-                red: { credits: 800, lossStreak: 0 },
-                black: { credits: 800, lossStreak: 0 }
+                red: createEconomy(),
+                black: createEconomy()
             },
             loadouts: {
-                red: { purchasedEffects: [] },
-                black: { purchasedEffects: [] }
+                red: createEmptyLoadout(),
+                black: createEmptyLoadout()
             }
         };
 
@@ -124,7 +157,9 @@ export class Room {
             score: { red: 0, black: 0 },
             currentRound: 1,
             targetWins,
-            winner: null
+            winner: null,
+            roundsDragonWrathUsed: { red: false, black: false },
+            determinationPurchased: { red: false, black: false }
         };
 
         this.roundState.status = 'buying';
@@ -134,8 +169,8 @@ export class Room {
         this.roundState.winner = null;
         this.roundState.reason = null;
         this.roundState.loadouts = {
-            red: { purchasedEffects: [] },
-            black: { purchasedEffects: [] }
+            red: createEmptyLoadout(),
+            black: createEmptyLoadout()
         };
 
         return { success: true };
@@ -206,8 +241,11 @@ export class Room {
             boardState: action.boardState,
             currentPlayer: action.state.currentPlayer,
             gameMode: action.state.gameMode,
+            placeModePieceType: action.state.placeModePieceType,
             riverBlockedTurns: action.state.riverBlockedTurns || 0,
-            extraTurns: action.state.extraTurns || 0
+            turnBudget: action.state.turnBudget || { red: 1, black: 1 },
+            waitingForTarget: action.state.waitingForTarget || null,
+            itemSlotOwner: action.state.itemSlotOwner || action.state.currentPlayer
         };
 
         const prevSerialized = JSON.stringify(this.sharedState || {});
@@ -215,6 +253,21 @@ export class Room {
         const prevTurn = this.roundState.turnColor;
 
         this.sharedState = nextSharedState;
+
+        if (action.roundState?.economies) {
+            this.roundState.economies = JSON.parse(JSON.stringify(action.roundState.economies));
+        }
+        if (action.roundState?.loadouts) {
+            this.roundState.loadouts = JSON.parse(JSON.stringify(action.roundState.loadouts));
+        }
+        if (action.matchState) {
+            this.matchState = {
+                ...this.matchState,
+                ...JSON.parse(JSON.stringify(action.matchState)),
+                currentRound: this.matchState.currentRound,
+                winner: this.matchState.winner
+            };
+        }
 
         const nextTurn = action.state.currentPlayer;
         if (nextTurn === 'red' || nextTurn === 'black') {
@@ -237,15 +290,23 @@ export class Room {
             return { success: false, reason: '缺少效果ID' };
         }
 
-        const price = effectId === 'poker_global' ? 420 : 9999;
+        const price = EFFECT_PRICES[effectId] ?? 300;
         const loadout = this.roundState.loadouts[player.color];
         const economy = this.roundState.economies[player.color];
+        const boughtMatchLimitedDragonWrath = this.matchState.roundsDragonWrathUsed?.[player.color];
+        const boughtMatchLimitedDetermination = this.matchState.determinationPurchased?.[player.color];
 
         if (loadout.purchasedEffects.length >= 3) {
             return { success: false, reason: '每局最多购买3项' };
         }
-        if (loadout.purchasedEffects.includes(effectId)) {
+        if (effectId !== 'flip_chess_pair' && loadout.purchasedEffects.includes(effectId)) {
             return { success: false, reason: '同类效果不可重复购买' };
+        }
+        if (effectId === 'dragon_wrath' && boughtMatchLimitedDragonWrath) {
+            return { success: false, reason: '守护巨龙之怒整场比赛每方仅可购买 1 次。' };
+        }
+        if (effectId === 'determination' && boughtMatchLimitedDetermination) {
+            return { success: false, reason: '决心整场比赛每方仅可购买 1 次。' };
         }
         if (economy.credits < price) {
             return { success: false, reason: '资金不足' };
@@ -253,6 +314,32 @@ export class Room {
 
         economy.credits -= price;
         loadout.purchasedEffects.push(effectId);
+        if (effectId === 'flip_chess_pair') {
+            loadout.flipChessStock += 2;
+        }
+        if (effectId === 'gomoku_mode') {
+            loadout.gomokuMode = true;
+        }
+        if (effectId === 'skeleton_revival') {
+            loadout.skeletonRevival = true;
+        }
+        if (effectId === 'ethereal_step') {
+            loadout.etherealStep = true;
+            loadout.etherealStepCharges = 1;
+        }
+        if (effectId === 'smoke_bomb') {
+            loadout.smokeBomb = true;
+            loadout.smokeBombCharges = 1;
+        }
+        if (effectId === 'dragon_wrath') {
+            loadout.dragonWrathUsed = true;
+            this.matchState.roundsDragonWrathUsed[player.color] = true;
+        }
+        if (effectId === 'determination') {
+            loadout.determinationAvailable = true;
+            loadout.determinationSavedState = null;
+            this.matchState.determinationPurchased[player.color] = true;
+        }
         return { success: true, changed: true };
     }
 
@@ -283,8 +370,8 @@ export class Room {
         this.roundState.winner = null;
         this.roundState.reason = null;
         this.roundState.loadouts = {
-            red: { purchasedEffects: [] },
-            black: { purchasedEffects: [] }
+            red: createEmptyLoadout(),
+            black: createEmptyLoadout()
         };
         this.lastActiveAt = Date.now();
 
